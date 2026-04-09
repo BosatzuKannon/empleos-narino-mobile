@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "Empleos Nariño",
+    "slug": "empleos-narino",
+    "version": "1.4.0",
+    "orientation": "default",
+    "icon": "./assets/images/logo2.png",
+    "scheme": "EmpleosNariño",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon1.png",
+        "backgroundColor": "#ffffff"
+      },
+      "androidNavigationBar": {
+        "visible": true,
+        "backgroundColor": "#00000000",
+        "barStyle": "dark-content"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.bosatzu.empleosnarino",
+      "versionCode": 16,
+      "splash": {
+        "backgroundColor": "#ffffff",
+        "resizeMode": "contain", 
+        "image": "./assets/images/splash.png"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/logo2.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "8a86e162-c727-4bab-8ff0-9d826172dc05"
+      }
+    }
+  }
+}

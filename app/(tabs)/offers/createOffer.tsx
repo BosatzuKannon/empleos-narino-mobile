@@ -1,0 +1,611 @@
+import hiringPlaceholder from '@/assets/images/hiring.png';
+import logo from '@/assets/images/logo.png';
+import GradientBackground from '@/components/GradientBackground';
+import { useAuth } from '@/context/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
+import { Picker } from '@react-native-picker/picker';
+import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Toast from 'react-native-toast-message';
+
+const nariñoMunicipalities = [
+  "Pasto", "Ipiales", "Tumaco", "Sandoná", "La Unión", "San Juan de Pasto", "La Cruz", "Samaniego", "Consacá", "Taminango", "Génova", "Cumbitara"
+];
+
+// URLs de los servicios
+const PRESIGNED_URL_API = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/offers/generatePresignedUrl';
+const CREATE_OFFER_API = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/offers/createOffer';
+// 🆕 Nueva URL para obtener el perfil y sacar el nombre de la empresa
+const GET_PROFILE_API = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/profile/getProfile';
+
+interface OfferData {
+  title: string;
+  company: string; 
+  description: string;
+  location: string;
+  workplaceType: string;
+  availablePositions: string;
+  salary: string;
+  contractType: string;
+}
+
+interface OfferErrors {
+  title?: string;
+  company?: string;
+  description?: string;
+  location?: string;
+  workplaceType?: string;
+  availablePositions?: string;
+  salary?: string;
+  contractType?: string;
+  receiptImage?: string;
+}
+
+const CreateOfferScreen = () => {
+  const router = useRouter();
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true); // Estado para carga de perfil
+  const [formErrors, setFormErrors] = useState<OfferErrors>({});
+  const [offerData, setOfferData] = useState<OfferData>({
+    title: '',
+    company: '', 
+    description: '',
+    location: '',
+    workplaceType: 'Presencial',
+    availablePositions: '1', 
+    salary: '',
+    contractType: 'Indefinido',
+  });
+  const [offerImage, setOfferImage] = useState<any>(null); 
+  const [receiptImage, setReceiptImage] = useState<any>(null); 
+
+  // --- Funciones de Toast ---
+  const showToast = (message: string, type: 'error' | 'success' = 'error') => {
+    Toast.show({
+      type: type,
+      text1: type === 'success' ? 'Éxito' : 'Error',
+      text2: message,
+      position: 'bottom',
+    });
+  };
+
+  // 🆕 EFECTO: Cargar nombre de la empresa desde el perfil
+  useEffect(() => {
+    const fetchCompanyInfo = async () => {
+      if (user?.sub) {
+        try {
+          setProfileLoading(true);
+          const response = await fetch(`${GET_PROFILE_API}/${user.sub}`);
+          if (response.ok) {
+            const data = await response.json();
+            // Si existe nombre de empresa en el perfil, lo seteamos
+            if (data.profile && data.profile.nombre_empresa) {
+               setOfferData(prev => ({ ...prev, company: data.profile.nombre_empresa }));
+            }
+          }
+        } catch (error) {
+          console.log("Error fetching company info", error);
+        } finally {
+          setProfileLoading(false);
+        }
+      }
+    };
+    fetchCompanyInfo();
+  }, [user]);
+  
+  // --- Función de Validación ---
+  const validateForm = (data: OfferData) => {
+    const errors: OfferErrors = {};
+    const parsedSalary = parseInt(data.salary.replace(/\D/g, '')) || 0;
+    const parsedPositions = parseInt(data.availablePositions) || 0;
+
+    // Campos Obligatorios
+    if (!data.title.trim()) errors.title = 'El título es obligatorio.';
+    if (!data.description.trim()) errors.description = 'La descripción es obligatoria.';
+    if (!data.location.trim()) errors.location = 'La ubicación es obligatoria.';
+    
+    // Validación Salario
+    if (!data.salary.trim()) {
+        errors.salary = 'El salario es obligatorio.';
+    } else if (parsedSalary <= 0) {
+        errors.salary = 'El salario debe ser mayor a cero.';
+    }
+
+    // Validación Cupos
+    if (parsedPositions <= 0) {
+        errors.availablePositions = 'Debe haber al menos 1 cupo disponible.';
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // Handler para limpiar errores al cambiar inputs
+  const handleChange = (field: keyof OfferData, value: string) => {
+    setOfferData(prev => ({ ...prev, [field]: value }));
+    if (formErrors[field]) {
+      setFormErrors(prev => ({ ...prev, [field]: undefined }));
+    }
+  };
+
+  // Función para subir archivo a S3
+  const uploadFileToS3 = async (fileUri, fileName, fileType, fileCategory = 'images') => {
+    try {
+      // 1. Obtener signed URL del backend
+      const response = await fetch(PRESIGNED_URL_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName, fileType, fileCategory }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error obteniendo signed URL: ${response.status}`);
+      }
+
+      const { signedUrl, key } = await response.json();
+
+      // 2. Leer y subir a S3
+      const fileResponse = await fetch(fileUri);
+      const blob = await fileResponse.blob();
+
+      const uploadResponse = await fetch(signedUrl, {
+        method: 'PUT',
+        body: blob,
+        headers: { 'Content-Type': fileType },
+      });
+
+      if (uploadResponse.ok) {
+        return key;
+      } else {
+        throw new Error('Error subiendo archivo a S3');
+      }
+    } catch (error) {
+      console.error('Error en uploadFileToS3:', error);
+      throw error;
+    }
+  };
+
+  const handleImageUpload = async (imageType: 'oferta' | 'comprobante') => {
+    try {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          showToast('Necesitamos permisos para acceder a tu galería de fotos.');
+          return;
+        }
+
+        let result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+        });
+
+        if (result.canceled) return;
+
+        const asset = result.assets[0];
+        const imageData = {
+            uri: asset.uri,
+            fileName: `${imageType}-${Date.now()}.jpg`,
+            type: 'image/jpeg'
+        };
+
+        if (imageType === 'oferta') {
+          setOfferImage(imageData);
+        } else {
+          setReceiptImage(imageData);
+          setFormErrors(prev => ({ ...prev, receiptImage: undefined }));
+        }
+    } catch (e) {
+        console.error('Error seleccionando imagen:', e);
+        showToast('No se pudo seleccionar la imagen.');
+    }
+  };
+
+  const handleSave = async () => {
+    // 1. Ejecutar validaciones
+    if (!validateForm(offerData)) {
+        showToast('Por favor, corrige los errores en el formulario.');
+        return;
+    }
+    
+    if (!user?.sub) {
+      showToast('No se pudo identificar al usuario. Por favor inicia sesión nuevamente.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      console.log('Iniciando proceso de creación de oferta...');
+
+      let imageKey = null;
+
+      // Subir imagen de la oferta (si existe)
+      if (offerImage) {
+        imageKey = await uploadFileToS3(
+          offerImage.uri, 
+          offerImage.fileName, 
+          offerImage.type,
+          'images'
+        );
+      }
+
+      // Preparar datos para crear la oferta
+      const offerPayload = {
+        titulo: offerData.title,
+        empresa: offerData.company || null, // Se enviará el nombre cargado automáticamente
+        descripcion: offerData.description,
+        municipio: offerData.location,
+        tipo_trabajo: offerData.workplaceType,
+        salario: parseInt(offerData.salary.replace(/\D/g, '')) || 0,
+        tipo_contrato: offerData.contractType,
+        cupos: parseInt(offerData.availablePositions) || 1,
+        imagen: imageKey, 
+        createdBy: `USER#${user.sub}`,
+        creatorEmail: user.email
+      };
+
+      // Crear la oferta
+      const offerResponse = await fetch(CREATE_OFFER_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(offerPayload),
+      });
+
+      if (!offerResponse.ok) {
+        const errorText = await offerResponse.text();
+        throw new Error(`Error creando oferta: ${errorText}`);
+      }
+
+      showToast('¡Oferta creada y en verificación!', 'success');
+      
+      // Redirigir al historial o a la pantalla anterior
+      router.back();
+
+    } catch (error) {
+      console.error('Error creando oferta:', error);
+      showToast('No se pudo crear la oferta. Intenta nuevamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const getErrorMessage = (field: keyof OfferErrors) => {
+    return formErrors[field] ? <Text style={styles.fieldError}>{formErrors[field]}</Text> : null;
+  };
+
+
+  return (
+    <GradientBackground>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.appHeader}>
+          <Image source={logo} style={styles.logo} />
+          <Text style={styles.appNameText}>Empleos Nariño</Text>
+          <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
+            <Ionicons name="close-circle-outline" size={30} color="#666666" />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <Text style={styles.titleText}>Crear Nueva Oferta</Text>
+          <Text style={styles.subtitleText}>
+            Completa los siguientes campos para publicar tu oferta de trabajo.
+          </Text>
+
+          <View style={styles.paymentInfoContainer}>
+            <Ionicons name="alert-circle-outline" size={24} color="#558B2F" style={styles.infoIcon} />
+            <Text style={styles.paymentInfoText}>
+              <Text style={styles.boldText}>Costo de publicación:</Text> El costo por publicar es <Text style={styles.boldText}>TOTALMENTE GRATIS!!! durante todo el 2025.</Text> 
+              {'\n'}
+            </Text>
+          </View>
+          
+          <View style={styles.formContainer}>
+            {/* Carga de Imagen de la Oferta */}
+            <Text style={styles.label}>Imagen de la oferta (Opcional)</Text>
+            <TouchableOpacity 
+              onPress={() => handleImageUpload('oferta')} 
+              style={styles.imageUploadButton}
+              disabled={loading}
+            >
+              <Ionicons name="cloud-upload-outline" size={24} color="#558B2F" />
+              <Text style={styles.imageUploadText}>
+                {loading ? 'Cargando...' : 'Cargar imagen'}
+              </Text>
+            </TouchableOpacity>
+            {offerImage ? (
+              <Image source={{ uri: offerImage.uri }} style={styles.uploadedImage} />
+            ) : (
+              <Image source={hiringPlaceholder} style={styles.uploadedImage} />
+            )}
+
+            <Text style={[styles.label, !!formErrors.title && styles.errorLabel]}>Título de la oferta *</Text>
+            <TextInput
+              style={[styles.input, !!formErrors.title && styles.inputError]}
+              placeholder="Ej. Desarrollador Web Full Stack"
+              value={offerData.title}
+              onChangeText={(text) => handleChange('title', text)}
+              editable={!loading}
+            />
+            {getErrorMessage('title')}
+
+            {/* 🚨 CAMPO EMPRESA: Solo lectura y precargado */}
+            <Text style={styles.label}>Nombre de la empresa</Text>
+            <TextInput
+              style={[styles.input, styles.disabledInput]} // Aplicamos estilo deshabilitado
+              placeholder={profileLoading ? "Cargando..." : "Nombre de la empresa"}
+              value={offerData.company}
+              onChangeText={(text) => handleChange('company', text)}
+              editable={false} // 🚨 NO SE PUEDE EDITAR
+            />
+
+            <Text style={[styles.label, !!formErrors.description && styles.errorLabel]}>Descripción del trabajo *</Text>
+            <TextInput
+              style={[styles.input, styles.textArea, !!formErrors.description && styles.inputError]}
+              placeholder="Describe las responsabilidades, requisitos y beneficios."
+              multiline
+              value={offerData.description}
+              onChangeText={(text) => handleChange('description', text)}
+              editable={!loading}
+            />
+            {getErrorMessage('description')}
+
+            {/* Selector de Ubicación */}
+            <Text style={[styles.label, !!formErrors.location && styles.errorLabel]}>Ubicación (Municipio de Nariño) *</Text>
+            <View style={[styles.pickerContainer, !!formErrors.location && styles.inputError]}>
+              <Picker
+                selectedValue={offerData.location}
+                onValueChange={(itemValue) => handleChange('location', itemValue)}
+                style={styles.picker}
+                enabled={!loading}
+              >
+                <Picker.Item label="Selecciona un municipio" value="" />
+                {nariñoMunicipalities.map((municipio) => (
+                  <Picker.Item key={municipio} label={municipio} value={municipio} />
+                ))}
+              </Picker>
+            </View>
+            {getErrorMessage('location')}
+
+
+            <Text style={styles.label}>Tipo de trabajo</Text>
+            <View style={styles.pickerContainer}>
+              <Picker
+                selectedValue={offerData.workplaceType}
+                onValueChange={(itemValue) => handleChange('workplaceType', itemValue)}
+                style={styles.picker}
+                enabled={!loading}
+              >
+                <Picker.Item label="Presencial" value="Presencial" />
+                <Picker.Item label="Remoto" value="Remoto" />
+                <Picker.Item label="Híbrido" value="Híbrido" />
+              </Picker>
+            </View>
+
+            <Text style={[styles.label, !!formErrors.salary && styles.errorLabel]}>Salario (mensual) *</Text>
+            <TextInput
+              style={[styles.input, !!formErrors.salary && styles.inputError]}
+              placeholder="Ej. 1800000"
+              keyboardType="numeric"
+              value={offerData.salary}
+              onChangeText={(text) => handleChange('salary', text)}
+              editable={!loading}
+            />
+            {getErrorMessage('salary')}
+
+
+            <Text style={styles.label}>Tipo de Contrato</Text>
+            <View style={styles.pickerContainer}>
+              <Picker
+                selectedValue={offerData.contractType}
+                onValueChange={(itemValue) => handleChange('contractType', itemValue)}
+                style={styles.picker}
+                enabled={!loading}
+              >
+                <Picker.Item label="Indefinido" value="Indefinido" />
+                <Picker.Item label="Definido" value="Definido" />
+                <Picker.Item label="Obra Labor" value="Obra Labor" />
+                <Picker.Item label="Servicios" value="Servicios" />
+              </Picker>
+            </View>
+
+            <Text style={[styles.label, !!formErrors.availablePositions && styles.errorLabel]}>Número de cupos disponibles *</Text>
+            <TextInput
+              style={[styles.input, !!formErrors.availablePositions && styles.inputError]}
+              placeholder="1"
+              keyboardType="numeric"
+              value={offerData.availablePositions}
+              onChangeText={(text) => handleChange('availablePositions', text)}
+              editable={!loading}
+            />
+            {getErrorMessage('availablePositions')}
+          </View>
+
+          <TouchableOpacity 
+            style={[styles.saveButton, loading && styles.saveButtonDisabled]} 
+            onPress={handleSave}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.saveButtonText}>Guardar y Publicar</Text>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    </GradientBackground>
+  );
+};
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    marginBottom: 50,
+  },
+  appHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    justifyContent: 'flex-start',
+  },
+  logo: {
+    width: 50,
+    height: 50,
+    resizeMode: 'contain',
+  },
+  appNameText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#000',
+    marginLeft: 0,
+  },
+  closeButton: {
+    position: 'absolute',
+    right: 20,
+    top: 10,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+  },
+  titleText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 5,
+  },
+  subtitleText: {
+    fontSize: 16,
+    color: '#666666',
+    marginBottom: 20,
+  },
+  formContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 15,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 5,
+    marginTop: 10,
+  },
+  errorLabel: {
+    color: '#d32f2f',
+  },
+  input: {
+    backgroundColor: '#f0f0f0',
+    borderRadius: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#333333',
+  },
+  // 🆕 ESTILO NUEVO: Input deshabilitado
+  disabledInput: {
+    backgroundColor: '#e0e0e0',
+    color: '#666666',
+  },
+  inputError: {
+    borderColor: '#d32f2f',
+    borderWidth: 1.5,
+  },
+  fieldError: {
+    color: '#d32f2f',
+    fontSize: 12,
+    marginTop: 4,
+    marginBottom: 10,
+    marginLeft: 5,
+    fontWeight: '500',
+  },
+  textArea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  pickerContainer: {
+    backgroundColor: '#f0f0f0',
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 50,
+    width: '100%',
+    color: '#333333',
+  },
+  paymentInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#e8f5e9',
+    borderRadius: 15,
+    padding: 20,
+    marginBottom: 20,
+  },
+  infoIcon: {
+    marginRight: 10,
+  },
+  paymentInfoText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#333333',
+    lineHeight: 20,
+  },
+  boldText: {
+    fontWeight: 'bold',
+  },
+  imageUploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E8F5E9',
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+    borderWidth: 1, 
+    borderColor: '#558B2F',
+    borderStyle: 'dashed',
+  },
+  imageUploadText: {
+    marginLeft: 10,
+    color: '#558B2F',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  uploadedImage: {
+    width: '100%',
+    height: 150,
+    borderRadius: 10,
+    resizeMode: 'cover',
+    marginTop: 10,
+  },
+  saveButton: {
+    backgroundColor: '#558B2F',
+    paddingVertical: 15,
+    borderRadius: 15,
+    alignItems: 'center',
+    marginBottom: 20,
+    marginTop: 20,
+  },
+  saveButtonDisabled: {
+    backgroundColor: '#A5D6A7',
+  },
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+});
+
+export default CreateOfferScreen;
