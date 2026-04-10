@@ -26,7 +26,7 @@
       "versionCode": 16,
       "splash": {
         "backgroundColor": "#ffffff",
-        "resizeMode": "contain", 
+        "resizeMode": "contain",
         "image": "./assets/images/splash.png"
       }
     },
@@ -44,7 +44,10 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
