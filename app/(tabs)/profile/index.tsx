@@ -1,8 +1,8 @@
 import GradientBackground from '@/components/GradientBackground';
-import { useAuth } from '@/context/AuthContext';
+import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Card, List } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,44 +30,12 @@ const ABOUT_OPTIONS = [
 
 const ProfileScreen = () => {
   const router = useRouter();
-  const { signOut, getUserData } = useAuth();
-  const [displayName, setDisplayName] = useState('Usuario');
-  const [userEmail, setUserEmail] = useState('');
+  const { user, signOut } = useAuthStore();
 
-  // Función auxiliar para Toast de éxito
-  const showSuccessToast = (message: string) => {
-    Toast.show({
-      type: 'success',
-      text1: 'Adiós',
-      text2: message,
-      position: 'bottom', // Usamos top para que no se oculte con el botón de cerrar
-    });
-  };
-
-  // Efecto para cargar los datos del usuario al montar la pantalla
-  useEffect(() => {
-    const loadUserData = async () => {
-      const userData = await getUserData();
-      
-      if (userData) {
-        // El token decodificado de Cognito guarda los nombres como given_name y family_name
-        const givenName = userData['given_name'] || '';
-        const familyName = userData['family_name'] || '';
-        const fullName = `${givenName} ${familyName}`.trim();
-
-        setDisplayName(fullName || 'Usuario');
-        setUserEmail(userData.email || '');
-      } else {
-        // Si no hay datos, probablemente no está autenticado, redirigir
-        setDisplayName('Usuario');
-        router.replace('/auth/login');
-      }
-    };
-
-    loadUserData();
-    
-    // El useFocusEffect de expo-router es ideal para recargar datos cuando la pestaña se enfoca
-  }, []);
+  const displayName = user
+    ? `${user.given_name || ''} ${user.family_name || ''}`.trim() || 'Usuario'
+    : 'Usuario';
+  const userEmail = user?.email || '';
 
   // Función de navegación
   const handlePress = (route: string) => {
@@ -95,14 +63,11 @@ const ProfileScreen = () => {
   const handleLogout = async () => {
     try {
       await signOut();
-      // 🚨 Mostrar Toast de éxito justo antes de la redirección
-      showSuccessToast('Sesión cerrada con éxito.'); 
-      // Reemplazar la pila de navegación para volver a la pantalla de autenticación
-      router.replace('/(tabs)');
+      Toast.show({ type: 'success', text1: 'Sesión cerrada con éxito.', position: 'bottom' });
     } catch (e) {
       console.error("Error al cerrar sesión:", e);
-      // Opcional: mostrar un Toast de error si signOut falla
-      Toast.show({type: 'error', text1: 'Error', text2: 'No se pudo cerrar la sesión.', position: 'bottom'});
+    } finally {
+      router.replace('/');
     }
   };
 

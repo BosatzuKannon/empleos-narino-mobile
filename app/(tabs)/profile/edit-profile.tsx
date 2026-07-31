@@ -1,5 +1,5 @@
 import GradientBackground from '@/components/GradientBackground';
-import { useAuth } from '@/context/AuthContext';
+import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -20,10 +20,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import municipiosNarino from '../../data/municipiosNarino'; // Importación corregida (named export)
 
+import apiFetch from '@/lib/apiClient';
+
 // URLs de los servicios
-const PRESIGNED_URL_API = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/offers/generatePresignedUrl';
-const GET_PROFILE_API = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/profile/getProfile';
-const UPDATE_PROFILE_API = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/profile/updateProfile';
+const PRESIGNED_URL_API = `${process.env.EXPO_PUBLIC_API_URL}/offers/generatePresignedUrl`;
+const GET_PROFILE_API = `${process.env.EXPO_PUBLIC_API_URL}/profile`;
+const UPDATE_PROFILE_API = `${process.env.EXPO_PUBLIC_API_URL}/profile`;
 
 interface Profile {
   nombres: string;
@@ -49,16 +51,22 @@ interface ProfileErrors {
 
 const EditProfileScreen = () => {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [uploadingResume, setUploadingResume] = useState(false);
   const [formErrors, setFormErrors] = useState<ProfileErrors>({}); 
   const [pdfModalVisible, setPdfModalVisible] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
 
-  // 🚨 Lógica de Roles: Determinamos quién es el usuario
-  const isApplicant = user ? user['custom:user_type'] === 'applicant' : false;
-  const isEnterprise = user ? user['custom:user_type'] === 'enterprise' : false;
+  useEffect(() => {
+    if (!isAuthenticated || !user?.sub) {
+      router.replace('/auth/login');
+    }
+  }, [isAuthenticated, user]);
+
+  const userRole = user?.['custom:user_type'] || '';
+  const isApplicant = userRole === 'CANDIDATE' || userRole === 'applicant';
+  const isEnterprise = userRole === 'COMPANY_ADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'enterprise';
 
   const [profileData, setProfileData] = useState<Profile>({
     nombres: '',
@@ -92,24 +100,23 @@ const EditProfileScreen = () => {
     try {
       setLoading(true);
       const response = await fetch(`${GET_PROFILE_API}/${user.sub}`);
-      
+
       if (!response.ok) {
         throw new Error('Error al cargar el perfil');
       }
 
-      const result = await response.json();
-      if (result.profile) {
-        setProfileData({
-          nombres: result.profile.nombres || '',
-          apellidos: result.profile.apellidos || '',
-          telefono: result.profile.telefono || '',
-          fecha_nacimiento: result.profile.fecha_nacimiento || '',
-          ciudad: result.profile.ciudad || '', 
-          nombre_empresa: result.profile.nombre_empresa || '',
-          email: result.profile.email || user.email || '',
-          resume_url: result.profile.resume_url || ''
-        });
-      }
+      const userData = await response.json();
+      const profile = userData.profile || userData;
+      setProfileData({
+        nombres: profile.firstName || '',
+        apellidos: profile.lastName || '',
+        telefono: profile.phone || '',
+        fecha_nacimiento: profile.birthDate ? profile.birthDate.split('T')[0] : '',
+        ciudad: profile.city || '',
+        nombre_empresa: profile.companyName || '',
+        email: profile.email || user.email || '',
+        resume_url: profile.resume || ''
+      });
     } catch (error) {
       console.error('Error fetching profile:', error);
       showToast('No se pudo cargar la información del perfil');
@@ -145,7 +152,7 @@ const EditProfileScreen = () => {
     return Object.keys(errors).length === 0;
   };
 
-  // Función para subir hoja de vida
+  // Función para subir hoja de vida (solo PDF, máximo 2 MB)
   const uploadResume = async () => {
     if (!user?.sub) return;
 
@@ -153,40 +160,55 @@ const EditProfileScreen = () => {
       setUploadingResume(true);
       
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+        type: ['application/pdf'],
         copyToCacheDirectory: true
       });
 
       if (result.canceled) return;
 
       const file = result.assets[0];
-      const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const fileName = `${Date.now()}-${cleanFileName}`;
-      const fileType = file.mimeType || 'application/pdf';
 
-      // 1. Obtener signed URL
-      const signedUrlResponse = await fetch(PRESIGNED_URL_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName: fileName, fileType: fileType, fileCategory: 'resumes' }),
-      });
-
-      if (!signedUrlResponse.ok) {
-        throw new Error(`Error obteniendo URL firmada: ${signedUrlResponse.status}`);
+      if (file.size != null && file.size > 2 * 1024 * 1024) {
+        showToast('El archivo supera el tamaño máximo permitido de 2 MB.');
+        return;
       }
 
-      const urlData = await signedUrlResponse.json();
-      const { signedUrl, key } = urlData;
-      
-      if (!signedUrl) {
-        throw new Error('No se recibió signedUrl en la respuesta');
+      const isPdf =
+        (file.mimeType && file.mimeType.toLowerCase() === 'application/pdf') ||
+        (file.name || '').toLowerCase().endsWith('.pdf');
+
+      if (!isPdf) {
+        showToast('Solo se aceptan hojas de vida en formato PDF.');
+        return;
+      }
+
+      const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const fileName = `${Date.now()}-${cleanFileName}`;
+      const fileType = 'application/pdf';
+
+      // 1. Obtener signed URL (con autenticación)
+      const urlData = await apiFetch(PRESIGNED_URL_API, {
+        method: 'POST',
+        authenticated: true,
+        body: JSON.stringify({
+          fileName: fileName,
+          fileType: fileType,
+          fileCategory: 'resumes',
+          fileSize: file.size,
+        }),
+      });
+
+      const { signedUrl, url } = urlData;
+
+      if (!signedUrl || !url) {
+        throw new Error('No se recibió la URL firmada del servidor');
       }
 
       // 2. Leer el archivo
       const fileResponse = await fetch(file.uri);
       const arrayBuffer = await fileResponse.arrayBuffer();
       
-      // 3. Subir a S3
+      // 3. Subir a Supabase Storage
       const response = await fetch(signedUrl, {
         method: 'PUT',
         body: arrayBuffer,
@@ -201,20 +223,16 @@ const EditProfileScreen = () => {
         throw new Error(`Error subiendo archivo: ${response.status}`);
       }
 
-      // 4. Actualizar perfil
-      const resumeUrl = `https://empleos-narino-files.s3.us-east-2.amazonaws.com/${key}`;
-      
-      const updateResponse = await fetch(`${UPDATE_PROFILE_API}/${user.sub}`, {
+      // 4. Actualizar perfil con la URL pública de la hoja de vida
+      const { email: _, ...profileWithoutEmail } = profileData;
+
+      await apiFetch(UPDATE_PROFILE_API, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...profileData, resume_url: resumeUrl }),
+        authenticated: true,
+        body: JSON.stringify({ ...profileWithoutEmail, resume_url: url }),
       });
 
-      if (!updateResponse.ok) {
-        throw new Error('Error actualizando perfil');
-      }
-
-      setProfileData(prev => ({ ...prev, resume_url: resumeUrl }));
+      setProfileData(prev => ({ ...prev, resume_url: url }));
       showToast('Hoja de vida subida correctamente', 'success');
       
     } catch (error: any) {
@@ -237,18 +255,14 @@ const EditProfileScreen = () => {
 
     try {
       setLoading(true);
-      
-      const response = await fetch(`${UPDATE_PROFILE_API}/${user.sub}`, {
+
+      const { email: _, ...profileWithoutEmail } = profileData;
+
+      const result = await apiFetch(UPDATE_PROFILE_API, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(profileData),
+        authenticated: true,
+        body: JSON.stringify(profileWithoutEmail),
       });
-
-      if (!response.ok) {
-        throw new Error('Error actualizando perfil');
-      }
-
-      const result = await response.json();
       console.log('Perfil actualizado:', result);
       
       showToast('Perfil actualizado correctamente', 'success');
@@ -450,7 +464,7 @@ const EditProfileScreen = () => {
               )}
               
               <Text style={styles.uploadHint}>
-                Formatos aceptados: PDF, DOC, DOCX
+                Formato aceptado: PDF (máximo 2 MB)
               </Text>
             </View>
           )}

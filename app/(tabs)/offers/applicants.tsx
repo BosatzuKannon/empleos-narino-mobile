@@ -1,9 +1,10 @@
+import { apiFetch } from '@/lib/apiClient';
 import GradientBackground from '@/components/GradientBackground';
-import { useAuth } from '@/context/AuthContext';
+import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react'; // AÑADIDO: useMemo
+import { useFocusEffect } from '@react-navigation/native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,45 +21,72 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import logo from '@/assets/images/logo.png';
 
-const API_URL = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/offers/getOfferApplications';
-const UPDATE_STATUS_URL = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/offers/updateApplicationStatus';
+const API_URL = `${process.env.EXPO_PUBLIC_API_URL}/offers/getOfferApplications`;
+const UPDATE_STATUS_URL = `${process.env.EXPO_PUBLIC_API_URL}/offers/updateApplicationStatus`;
 
-// Estados válidos de postulación (se mantienen)
+const APP_STATUS_DISPLAY = {
+  'SENT': 'enviada',
+  'REVIEWED': 'en_revision',
+  'INTERVIEWING': 'entrevista',
+  'REJECTED': 'rechazada',
+  'HIRED': 'seleccionado',
+  'CANCELED': 'cancelada',
+};
+
 const VALID_STATUSES = [
-  'postulado',
-  'hoja de vida vista', 
-  'en proceso',
-  'proceso finalizado',
-  'contratado'
+  'enviada',
+  'en_revision',
+  'entrevista',
+  'rechazada',
+  'seleccionado',
 ];
 
-// AÑADIDO: Array de estados para los Chips, incluyendo 'Todos'
 const APPLICATION_STATUSES_CHIPS = [
   'Todos',
-  ...VALID_STATUSES
+  ...VALID_STATUSES,
+  'cancelada'
 ];
 
 
 const getStatusStyle = (status) => {
-    // CORRECCIÓN DE SEGURIDAD: Prevenir el error si el estado es undefined/null
     if (!status || typeof status !== 'string') {
-        return styles.statusApplied; // Retorna el estilo 'postulado' como fallback seguro
+        return styles.statusApplied;
     }
     
     switch (status.toLowerCase()) {
-      case 'contratado':
+      case 'seleccionado':
         return styles.statusHired;
-      case 'proceso finalizado':
+      case 'rechazada':
         return styles.statusFinalized;
-      case 'en proceso':
+      case 'entrevista':
         return styles.statusInProgress;
-      case 'hoja de vida vista':
+      case 'en_revision':
         return styles.statusViewed;
-      case 'postulado':
+      case 'cancelada':
+        return styles.statusCanceled;
+      case 'enviada':
       default:
         return styles.statusApplied;
     }
 };
+
+let _offerTitle = '';
+
+const mapApplication = (app) => ({
+  application_id: app.id,
+  status: APP_STATUS_DISPLAY[app.status] || 'enviada',
+  applied_at: app.appliedAt || app.createdAt,
+  offerTitle: _offerTitle,
+  user: {
+    nombres: app.user?.firstName || '',
+    apellidos: app.user?.lastName || '',
+    email: app.user?.email || '',
+    telefono: app.user?.phone || '',
+    ciudad: app.user?.city || '',
+    fecha_nacimiento: app.user?.birthDate || null,
+    resume_url: app.user?.resume || '',
+  },
+});
 
 const formatDate = (dateString) => {
   const date = new Date(dateString);
@@ -93,7 +121,7 @@ const ApplicantCard = ({ applicant, onPress }) => (
         {applicant.user.nombres} {applicant.user.apellidos}
       </Text>
       <Text style={[styles.statusText, getStatusStyle(applicant.status)]}>
-        {applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1)}
+        {formatStatusLabel(applicant.status)}
       </Text>
     </View>
     <Text style={styles.applicantEmail}>{applicant.user.email}</Text>
@@ -117,10 +145,10 @@ const ApplicantCard = ({ applicant, onPress }) => (
   </TouchableOpacity>
 );
 
-// AÑADIDO: Componente Chip de Filtro
+const formatStatusLabel = (s) => s.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
 const StatusChip = ({ status, isSelected, onPress }) => {
-  // Usamos el estado real para obtener el estilo (para 'Todos', usamos 'postulado' como base)
-  const statusKey = status === 'Todos' ? 'postulado' : status; 
+  const statusKey = status === 'Todos' ? 'enviada' : status; 
   const statusStyle = getStatusStyle(statusKey);
   
   // Lógica de color de selección
@@ -141,7 +169,7 @@ const StatusChip = ({ status, isSelected, onPress }) => {
       onPress={() => onPress(status)}
     >
       <Text style={[styles.chipText, { color: chipTextColor }]}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+        {status === 'Todos' ? status : formatStatusLabel(status)}
       </Text>
     </TouchableOpacity>
   );
@@ -149,9 +177,9 @@ const StatusChip = ({ status, isSelected, onPress }) => {
 
 
 const ApplicantsScreen = () => {
-  const { offerId } = useLocalSearchParams();
-  const { user } = useAuth();
-  const navigation = useNavigation();
+  const { offerId, offerTitle } = useLocalSearchParams();
+  const { user } = useAuthStore();
+  const router = useRouter();
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedApplicant, setSelectedApplicant] = useState(null);
   const [applicants, setApplicants] = useState([]);
@@ -164,15 +192,10 @@ const ApplicantsScreen = () => {
   const fetchApplicants = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/${offerId}`);
-      const data = await response.json();
-      
-      if (response.ok) {
-        // Asegurar que applications es un array antes de setearlo
-        setApplicants(Array.isArray(data.applications) ? data.applications : []);
-      } else {
-        setError(data.message || 'Error al cargar los postulados');
-      }
+      const json = await apiFetch(`${API_URL}/${offerId}`, { authenticated: true });
+      const rawList = Array.isArray(json) ? json : (json?.candidates || []);
+      setApplicants(rawList.map(mapApplication));
+      setError(null);
     } catch (err) {
       setError('Error de conexión');
       console.error('Error fetching applicants:', err);
@@ -184,6 +207,7 @@ const ApplicantsScreen = () => {
   useFocusEffect(
     useCallback(() => {
       if (offerId) {
+        _offerTitle = offerTitle || '';
         fetchApplicants();
       }
     }, [offerId])
@@ -196,43 +220,38 @@ const ApplicantsScreen = () => {
 
   const handleUpdateStatus = async (newStatus) => {
     if (!selectedApplicant || !user?.sub) return;
+    if (selectedApplicant.status === 'cancelada') {
+      Alert.alert('Estado bloqueado', 'El candidato canceló su postulación y esta no puede ser modificada.');
+      return;
+    }
 
     setUpdatingStatus(true);
     try {
-      const response = await fetch(UPDATE_STATUS_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const json = await apiFetch(
+        `${UPDATE_STATUS_URL}/${selectedApplicant.application_id}`,
+        {
+          method: 'PUT',
+          authenticated: true,
+          body: JSON.stringify({
+            status: newStatus,
+            candidateEmail: selectedApplicant.user.email,
+            offerTitle: selectedApplicant.offerTitle || '',
+          }),
         },
-        body: JSON.stringify({
-          offer_id: offerId,
-          application_id: selectedApplicant.application_id,
-          status: newStatus,
-          updated_by: user.sub
-        }),
-      });
+      );
 
-      const data = await response.json();
-
-      if (response.ok) {
-        // Actualizar el estado localmente
-        const updatedApplicants = applicants.map(applicant => 
-          applicant.application_id === selectedApplicant.application_id 
-            ? { ...applicant, status: newStatus }
-            : applicant
-        );
-        setApplicants(updatedApplicants);
-        
-        // Actualizar el applicant seleccionado
-        setSelectedApplicant({ ...selectedApplicant, status: newStatus });
-        
-        Alert.alert('Éxito', data.message || 'Estado actualizado correctamente');
-      } else {
-        Alert.alert('Error', data.message || 'No se pudo actualizar el estado');
-      }
+      const updatedApplicants = applicants.map(applicant => 
+        applicant.application_id === selectedApplicant.application_id 
+          ? { ...applicant, status: newStatus }
+          : applicant
+      );
+      setApplicants(updatedApplicants);
+      setSelectedApplicant({ ...selectedApplicant, status: newStatus });
+      Alert.alert('Éxito', json.message || 'Estado actualizado correctamente');
     } catch (err) {
       console.error('Error updating status:', err);
-      Alert.alert('Error', 'Error de conexión al actualizar el estado');
+      const msg = (err as any)?.message || 'No se pudo actualizar el estado';
+      Alert.alert('Error', msg);
     } finally {
       setUpdatingStatus(false);
     }
@@ -281,7 +300,7 @@ const ApplicantsScreen = () => {
       <GradientBackground>
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.appHeader}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
               <Ionicons name="arrow-back" size={24} color="#000" />
             </TouchableOpacity>
             <Image source={logo} style={styles.logo} />
@@ -301,7 +320,7 @@ const ApplicantsScreen = () => {
       <GradientBackground>
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.appHeader}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
               <Ionicons name="arrow-back" size={24} color="#000" />
             </TouchableOpacity>
             <Image source={logo} style={styles.logo} />
@@ -324,7 +343,7 @@ const ApplicantsScreen = () => {
       <SafeAreaView style={styles.safeArea}>
         {/* Encabezado con logo y nombre de la aplicación */}
         <View style={styles.appHeader}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
           <Image source={logo} style={styles.logo} />
@@ -419,7 +438,7 @@ const ApplicantsScreen = () => {
                 <Text style={styles.modalSectionTitle}>Estado de la postulación</Text>
                 <View style={styles.statusContainer}>
                   <Text style={[styles.modalStatus, getStatusStyle(selectedApplicant?.status)]}>
-                    {selectedApplicant?.status.charAt(0).toUpperCase() + selectedApplicant?.status.slice(1)}
+                    {selectedApplicant ? formatStatusLabel(selectedApplicant.status) : ''}
                   </Text>
                   {updatingStatus && (
                     <ActivityIndicator size="small" color="#558B2F" style={styles.statusLoader} />
@@ -427,6 +446,14 @@ const ApplicantsScreen = () => {
                 </View>
 
                 <Text style={styles.modalSectionTitle}>Cambiar Estado</Text>
+                {selectedApplicant?.status === 'cancelada' ? (
+                  <View style={styles.canceledLockContainer}>
+                    <Ionicons name="lock-closed-outline" size={20} color="#546e7a" />
+                    <Text style={styles.canceledLockText}>
+                      El candidato canceló su postulación. Este estado no puede ser modificado.
+                    </Text>
+                  </View>
+                ) : (
                 <View style={styles.statusButtonsContainer}>
                   {VALID_STATUSES.map((status) => (
                     <TouchableOpacity
@@ -442,11 +469,12 @@ const ApplicantsScreen = () => {
                         styles.statusButtonText,
                         selectedApplicant?.status === status && styles.statusButtonTextActive
                       ]}>
-                        {status.charAt(0).toUpperCase() + status.slice(1)}
+                        {formatStatusLabel(status)}
                       </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
+                )}
 
                 <Text style={styles.modalSectionTitle}>Información Personal</Text>
                 <View style={styles.personalInfoContainer}>
@@ -667,6 +695,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#c8e6c9',
     color: '#2e7d32',
   },
+  statusCanceled: {
+    backgroundColor: '#eceff1',
+    color: '#546e7a',
+  },
   noResultsContainer: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -782,6 +814,21 @@ const styles = StyleSheet.create({
   statusButtonTextActive: {
     color: '#FFFFFF',
     fontWeight: 'bold',
+  },
+  canceledLockContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eceff1',
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 20,
+  },
+  canceledLockText: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 14,
+    color: '#546e7a',
+    fontWeight: '500',
   },
   personalInfoContainer: {
     backgroundColor: '#f8f9fa',

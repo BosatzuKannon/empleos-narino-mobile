@@ -1,4 +1,3 @@
-import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from 'expo-linking';
@@ -7,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { PaperProvider } from "react-native-paper";
 import Toast from "react-native-toast-message";
+import { useAuthStore } from '@/store/authStore';
 
 // URL de la Play Store
 const APP_PLAYSTORE_URL = 'https://play.google.com/store/apps/details?id=com.bosatzu.empleosnarino'; 
@@ -136,7 +136,7 @@ function useOnboardingStatus() {
 }
 
 function MainNavigation() {
-  const { isAuthenticated, isLoading, isOutdated, outdatedMessage } = useAuth(); 
+  const { isAuthenticated, isLoading, isOutdated, outdatedMessage } = useAuthStore(); 
   const { hasSeenOnboarding, isReady: isOnboardingReady } = useOnboardingStatus();
   const router = useRouter(); 
   const segments = useSegments(); 
@@ -218,11 +218,20 @@ function MainNavigation() {
 }
 
 export default function RootLayout() {
+  const initializeAuth = useAuthStore((state) => state.initializeAuth);
+  const checkAppVersion = useAuthStore((state) => state.checkAppVersion);
+
+  useEffect(() => {
+    const init = async () => {
+      await initializeAuth();
+      await checkAppVersion();
+    };
+    init();
+  }, []);
+
   return (
     <PaperProvider>
-      <AuthProvider>
-        <MainNavigation />
-      </AuthProvider>
+      <MainNavigation />
       <Toast /> 
     </PaperProvider>
   );

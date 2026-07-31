@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message'; // Importación para usar Toast
 
 // URL del endpoint para confirmar el registro
-const CONFIRM_SIGNUP_URL = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/auth/confirmSignup';
+const CONFIRM_SIGNUP_URL = `${process.env.EXPO_PUBLIC_API_URL}/auth/confirmSignup`;
 
 // Componente principal
 const EmailConfirmationScreen = () => {

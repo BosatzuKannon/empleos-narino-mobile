@@ -1,11 +1,13 @@
+import { apiFetch } from '@/lib/apiClient';
 import GradientBackground from '@/components/GradientBackground';
-import { useAuth } from '@/context/AuthContext'; // 1. Importar el hook de autenticación
+import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Link } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   ScrollView,
@@ -21,34 +23,67 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import hiringPlaceholder from '@/assets/images/hiring.png';
 import logo from '@/assets/images/logo.png';
 
-const API_URL = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/offers/getUserApplications';
+const API_URL = `${process.env.EXPO_PUBLIC_API_URL}/offers/getUserApplications`;
+const UPDATE_APPLICATION_API = `${process.env.EXPO_PUBLIC_API_URL}/offers/updateApplicationStatus`;
 const S3_BASE_URL = 'https://empleos-narino-files.s3.us-east-2.amazonaws.com/';
 
-// 1. Array de todos los estados posibles
+const APP_STATUS_DISPLAY: Record<string, string> = {
+  'SENT': 'enviada',
+  'REVIEWED': 'en_revision',
+  'INTERVIEWING': 'entrevista',
+  'REJECTED': 'rechazada',
+  'HIRED': 'seleccionado',
+  'CANCELED': 'cancelada',
+};
+
 const APPLICATION_STATUSES = [
   'Todos',
-  'postulado',
-  'hoja de vida vista',
-  'en proceso',
-  'proceso finalizado',
-  'contratado'
+  'enviada',
+  'en_revision',
+  'entrevista',
+  'rechazada',
+  'seleccionado',
+  'cancelada',
 ];
+
+const CANCELABLE_STATUSES = ['enviada', 'en_revision', 'entrevista'];
+
+const formatStatusLabel = (s: string) => s.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
 const getStatusStyle = (status: string) => {
   switch (status) {
-    case 'contratado':
+    case 'seleccionado':
       return styles.statusHired;
-    case 'proceso finalizado':
+    case 'rechazada':
       return styles.statusFinalized;
-    case 'en proceso':
+    case 'entrevista':
       return styles.statusInProgress;
-    case 'hoja de vida vista':
+    case 'en_revision':
       return styles.statusViewed;
-    case 'postulado':
+    case 'cancelada':
+      return styles.statusCanceled;
+    case 'enviada':
     default:
       return styles.statusApplied;
   }
 };
+
+const mapApplication = (app: any) => ({
+  application_id: app.id,
+  status: APP_STATUS_DISPLAY[app.status] || 'enviada',
+  applied_at: app.appliedAt || app.createdAt,
+  offer: {
+    titulo: app.jobVacancy?.title || 'Sin título',
+    empresa: app.jobVacancy?.company?.name || '',
+    municipio: app.jobVacancy?.location || 'Ubicación no especificada',
+    tipo_trabajo: app.jobVacancy?.contractType || 'Tipo no especificado',
+    salario: app.jobVacancy?.salary || null,
+    imagen: app.jobVacancy?.requirements || null,
+    descripcion: app.jobVacancy?.description || '',
+    tipo_contrato: app.jobVacancy?.contractType || 'No especificado',
+    cupos: app.jobVacancy?.availablePositions ?? 0,
+  },
+});
 
 const formatSalary = (salary: any) => {
   if (!salary) return 'Salario no especificado';
@@ -68,7 +103,7 @@ const ApplicationCard = ({ application, onPress }: { application: any, onPress: 
     <View style={styles.cardHeader}>
       <Text style={styles.jobTitle}>{application.offer.titulo || 'Sin título'}</Text>
       <Text style={[styles.statusText, getStatusStyle(application.status)]}>
-        {application.status.charAt(0).toUpperCase() + application.status.slice(1)}
+        {formatStatusLabel(application.status)}
       </Text>
     </View>
     <Text style={styles.companyName}>{application.offer.empresa || 'Empresa no especificada'}</Text>
@@ -93,7 +128,7 @@ const ApplicationCard = ({ application, onPress }: { application: any, onPress: 
 );
 
 const StatusChip = ({ status, isSelected, onPress }: { status: string, isSelected: boolean, onPress: (s: string) => void }) => {
-  const statusKey = status === 'Todos' ? 'postulado' : status; 
+  const statusKey = status === 'Todos' ? 'enviada' : status; 
   const statusStyle = getStatusStyle(statusKey);
   
   const chipBackgroundColor = isSelected ? statusStyle.color : '#f0f0f0'; 
@@ -113,7 +148,7 @@ const StatusChip = ({ status, isSelected, onPress }: { status: string, isSelecte
       onPress={() => onPress(status)}
     >
       <Text style={[styles.chipText, { color: chipTextColor }]}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+        {status === 'Todos' ? status : formatStatusLabel(status)}
       </Text>
     </TouchableOpacity>
   );
@@ -121,8 +156,7 @@ const StatusChip = ({ status, isSelected, onPress }: { status: string, isSelecte
 
 
 const ApplicationsScreen = () => {
-  // 2. Obtener el usuario del contexto
-  const { user } = useAuth();
+  const { user } = useAuthStore();
   
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<any>(null);
@@ -131,6 +165,7 @@ const ApplicationsScreen = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedStatus, setSelectedStatus] = useState('Todos'); 
   const [searchText, setSearchText] = useState(''); 
+  const [canceling, setCanceling] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -145,31 +180,55 @@ const ApplicationsScreen = () => {
   );
 
   const fetchApplications = async () => {
-    if (!user?.sub) return; // Doble chequeo de seguridad
+    if (!user?.sub) return;
 
     try {
       setLoading(true);
-      // 3. Usar user.sub dinámicamente
-      const response = await fetch(`${API_URL}/${user.sub}`);
-      const data = await response.json();
-      
-      if (response.ok) {
-        const validApplications = (data.applications || []).filter((app: any) => app.offer);
-        setApplications(validApplications);
-        setError(null); // Limpiar errores previos si fue exitoso
-      } else {
-        // Si no hay postulaciones, a veces el back devuelve 404 o un mensaje
-        if (response.status === 404) {
-            setApplications([]);
-        } else {
-            setError(data.message || 'Error al cargar las postulaciones');
-        }
-      }
+      const json = await apiFetch(`${API_URL}/${user.sub}`, { authenticated: true });
+      const rawList = Array.isArray(json) ? json : (json?.applications || []);
+      const validApplications = rawList.map(mapApplication);
+      setApplications(validApplications);
+      setError(null);
     } catch (err) {
       setError('Error de conexión');
       console.error('Error fetching applications:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCancelApplication = async () => {
+    if (!selectedApplication || !user?.sub) return;
+
+    setCanceling(true);
+    try {
+      const json = await apiFetch(
+        `${UPDATE_APPLICATION_API}/${selectedApplication.application_id}`,
+        {
+          method: 'PUT',
+          authenticated: true,
+          body: JSON.stringify({
+            status: 'cancelada',
+            candidateEmail: user.email || '',
+            offerTitle: selectedApplication.offer.titulo,
+          }),
+        },
+      );
+
+      const updatedApplications = applications.map(app =>
+        app.application_id === selectedApplication.application_id
+          ? { ...app, status: 'cancelada' }
+          : app
+      );
+      setApplications(updatedApplications);
+      setSelectedApplication({ ...selectedApplication, status: 'cancelada' });
+      Alert.alert('Éxito', json.message || 'Postulación cancelada exitosamente');
+    } catch (err) {
+      console.error('Error cancelando postulación:', err);
+      const msg = (err as any)?.message || 'No se pudo cancelar la postulación';
+      Alert.alert('Error', msg);
+    } finally {
+      setCanceling(false);
     }
   };
 
@@ -181,10 +240,17 @@ const ApplicationsScreen = () => {
   const filteredApplications = useMemo(() => {
     const lowerCaseSearchText = searchText.toLowerCase().trim();
 
+    // 0. Ordenar por fecha de postulación (más recientes primero)
+    const sortedByDate = [...applications].sort((a, b) => {
+      const da = new Date(a.applied_at || 0).getTime();
+      const db = new Date(b.applied_at || 0).getTime();
+      return db - da;
+    });
+
     // 1. Filtrar por estado
-    let filteredByStatus = applications;
+    let filteredByStatus = sortedByDate;
     if (selectedStatus !== 'Todos') {
-      filteredByStatus = applications.filter(app => app.status === selectedStatus);
+      filteredByStatus = sortedByDate.filter(app => app.status === selectedStatus);
     }
 
     // 2. Filtrar el resultado por título (búsqueda)
@@ -347,8 +413,26 @@ const ApplicationsScreen = () => {
 
                 <Text style={styles.modalSectionTitle}>Estado de la postulación</Text>
                 <Text style={[styles.modalStatus, getStatusStyle(selectedApplication?.status)]}>
-                  {selectedApplication?.status ? (selectedApplication.status.charAt(0).toUpperCase() + selectedApplication.status.slice(1)) : ''}
+                  {selectedApplication ? formatStatusLabel(selectedApplication.status) : ''}
                 </Text>
+
+                {selectedApplication &&
+                  CANCELABLE_STATUSES.includes(selectedApplication.status) && (
+                    <TouchableOpacity
+                      style={[styles.cancelButton, canceling && styles.cancelButtonDisabled]}
+                      onPress={handleCancelApplication}
+                      disabled={canceling}
+                    >
+                      {canceling ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <>
+                          <Ionicons name="close-circle-outline" size={18} color="#FFFFFF" />
+                          <Text style={styles.cancelButtonText}>Cancelar postulación</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
 
                 <Text style={styles.modalSectionTitle}>Descripción del puesto</Text>
                 <Text style={styles.modalDescription}>
@@ -532,6 +616,28 @@ const styles = StyleSheet.create({
   statusHired: {
     backgroundColor: '#c8e6c9',
     color: '#2e7d32',
+  },
+  statusCanceled: {
+    backgroundColor: '#eceff1',
+    color: '#546e7a',
+  },
+  cancelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#e64e4e',
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 10,
+  },
+  cancelButtonDisabled: {
+    backgroundColor: '#e57373',
+  },
+  cancelButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 15,
+    marginLeft: 8,
   },
   noResultsText: {
     textAlign: 'center',

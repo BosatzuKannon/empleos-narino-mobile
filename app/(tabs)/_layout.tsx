@@ -1,4 +1,4 @@
-import { useAuth } from '@/context/AuthContext';
+import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router/tabs';
 import LottieView from 'lottie-react-native';
@@ -23,7 +23,7 @@ import UserInactive from '@/assets/icons/userInactive.json';
 // =======================================================
 const ServiceStatusBanner = () => {
     // 🆕 Consumimos también el tipo de estado
-    const { appStatusVisible, appStatusMessage, appStatusType } = useAuth();
+    const { appStatusVisible, appStatusMessage, appStatusType } = useAuthStore();
     const [isDismissed, setIsDismissed] = useState(false);
 
     // Reiniciar dismiss si el mensaje vuelve a activarse
@@ -107,11 +107,11 @@ const ServiceStatusBanner = () => {
 };
 
 const TabLayout = () => {
-    const { isAuthenticated, isLoading, user } = useAuth();
+    const { isAuthenticated, isLoading, user } = useAuthStore();
 
-    // Lógica de roles
-    const isApplicant = user ? user['custom:user_type'] === 'applicant' : false;
-    const isEnterprise = user ? user['custom:user_type'] === 'enterprise' : false;
+    const userRole = user?.['custom:user_type'] || '';
+    const isApplicant = userRole === 'CANDIDATE';
+    const isEnterprise = userRole === 'COMPANY_ADMIN' || userRole === 'SUPER_ADMIN';
 
     if (isLoading) {
         return null; 

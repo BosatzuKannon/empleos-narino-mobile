@@ -1,9 +1,11 @@
 import hiringPlaceholder from '@/assets/images/hiring.png';
 import logo from '@/assets/images/logo.png';
+import { apiFetch } from '@/lib/apiClient';
 import GradientBackground from '@/components/GradientBackground';
-import { useAuth } from '@/context/AuthContext';
+import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,8 +20,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const API_BASE = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/offers/getActiveOffers';
-const APPLY_API_URL = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/offers/applyToJob';
+const API_BASE = `${process.env.EXPO_PUBLIC_API_URL}/offers/getActiveOffers`;
+const APPLY_API_URL = `${process.env.EXPO_PUBLIC_API_URL}/offers/applyToJob`;
+const USER_APPLICATIONS_API = `${process.env.EXPO_PUBLIC_API_URL}/offers/getUserApplications`;
+const PROFILE_API = `${process.env.EXPO_PUBLIC_API_URL}/profile`;
 
 const getImageUri = (imagenKey: string) => {
   if (!imagenKey) return null;
@@ -35,17 +39,17 @@ const formatCurrency = (value: any) => {
 };
 
 const mapOffer = (offer: any) => ({
-  id: offer.pk || offer.id || `${offer.titulo}-${offer.created_at}`,
-  title: offer.titulo || '',
-  company: offer.empresa || '',
-  description: offer.descripcion || '',
-  location: offer.municipio || '',
-  workplaceType: offer.tipo_trabajo || '',
-  availablePositions: offer.cupos ?? 0,
-  salary: formatCurrency(offer.salario),
-  contractType: offer.tipo_contrato || '',
-  image: offer.imagen ? getImageUri(offer.imagen) : '',
-  raw: offer,
+  id: offer.id,
+  title: offer.title || '',
+  company: offer.company?.name || '',
+  description: offer.description || '',
+  location: offer.location || '',
+  workplaceType: offer.contractType || '',
+  salary: formatCurrency(offer.salary),
+  contractType: offer.contractType || '',
+  createdAt: offer.createdAt || new Date().toISOString(),
+  imageUrl: offer.requirements || null,
+  availablePositions: offer.availablePositions ?? 1,
 });
 
 const OfferCard = ({ offer, onPress }: { offer: any, onPress: (offer: any) => void }) => (
@@ -76,8 +80,8 @@ const OfferCard = ({ offer, onPress }: { offer: any, onPress: (offer: any) => vo
 );
 
 const HomeScreen = () => {
-  const { user, isAuthenticated } = useAuth();
-  const navigation = useNavigation<any>();
+  const { user, isAuthenticated } = useAuthStore();
+  const router = useRouter();
   const [offers, setOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -92,8 +96,11 @@ const HomeScreen = () => {
   const [selectedOffer, setSelectedOffer] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [applying, setApplying] = useState(false);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [alreadyApplied, setAlreadyApplied] = useState(false);
+  const [hasResume, setHasResume] = useState(false);
 
-  const isEnterprise = user ? user['custom:user_type'] === 'enterprise' : false;
+  const isEnterprise = user ? (user['custom:user_type'] === 'COMPANY_ADMIN' || user['custom:user_type'] === 'enterprise') : false;
 
   const fetchActiveOffers = async () => {
     setLoading(true);
@@ -107,12 +114,12 @@ const HomeScreen = () => {
       }
 
       const json = await res.json();
-      const backendData = json?.data || [];
+      const backendData = Array.isArray(json) ? json : (json?.offers || json?.data || []);
       const mapped = backendData.map(mapOffer);
 
       mapped.sort((a: any, b: any) => {
-        const da = new Date(a.raw?.created_at || 0).getTime();
-        const db = new Date(b.raw?.created_at || 0).getTime();
+        const da = new Date(a.createdAt || 0).getTime();
+        const db = new Date(b.createdAt || 0).getTime();
         return db - da;
       });
 
@@ -131,51 +138,58 @@ const HomeScreen = () => {
     }, [])
   );
 
-  const handleSelectOffer = (offer: any) => {
+  const handleSelectOffer = async (offer: any) => {
     setSelectedOffer(offer);
     setIsModalVisible(true);
-  };
-
-  const handleApply = async () => {
-    if (!selectedOffer) return;
+    setAlreadyApplied(false);
 
     if (!isAuthenticated || !user?.sub) {
-      setIsModalVisible(false);
-      setIsLoginModalVisible(true);
+      setHasResume(false);
       return;
     }
 
+    try {
+      const [appsJson, profileJson] = await Promise.all([
+        apiFetch(`${USER_APPLICATIONS_API}/${user.sub}`, { authenticated: true }),
+        fetch(`${PROFILE_API}/${user.sub}`).then(async (r) =>
+          r.ok ? r.json() : { profile: null },
+        ),
+      ]);
+
+      const applications = appsJson?.applications || appsJson?.data || [];
+      setAlreadyApplied(applications.some((app: any) => app.jobId === offer.id));
+
+      const profile = profileJson?.profile || null;
+      setHasResume(!!profile?.resume);
+    } catch {
+      setAlreadyApplied(false);
+      setHasResume(false);
+    }
+  };
+
+  const handleApply = async () => {
+    if (!selectedOffer || !user?.sub) return;
+
     setApplying(true);
     try {
-      const response = await fetch(APPLY_API_URL, {
+      await apiFetch(`${APPLY_API_URL}/${user.sub}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        authenticated: true,
         body: JSON.stringify({
-          user_id: user.sub,
-          offer_id: selectedOffer.raw.pk.replace('OFFER#', '')
+          offer_id: selectedOffer.id,
+          offer_title: selectedOffer.title,
+          empresa: selectedOffer.company,
         }),
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        setIsModalVisible(false);
-        setIsCongratsModalVisible(true);
-      } else {
-        // 🚨 REEMPLAZO DEL ALERT POR EL MODAL PERSONALIZADO
-        setIsModalVisible(false);
-        setInfoTitle('Aviso');
-        setInfoMessage(data.message || 'No se pudo enviar la aplicación');
-        setIsInfoModalVisible(true);
-      }
+      setIsModalVisible(false);
+      setIsCongratsModalVisible(true);
+      setAlreadyApplied(true);
     } catch (error) {
       console.error('Error applying to job:', error);
       setIsModalVisible(false);
-      // 🚨 REEMPLAZO DEL ALERT POR EL MODAL PERSONALIZADO
-      setInfoTitle('Error de conexión');
-      setInfoMessage('No se pudo conectar con el servidor. Intenta nuevamente.');
+      setInfoTitle('Aviso');
+      setInfoMessage((error as any)?.message || 'No se pudo enviar la aplicación');
       setIsInfoModalVisible(true);
     } finally {
       setApplying(false);
@@ -184,7 +198,7 @@ const HomeScreen = () => {
 
   const handleLogin = () => {
     setIsLoginModalVisible(false);
-    navigation.navigate('auth'); 
+    router.push('/(tabs)/auth');
   };
 
   const handleContinueWithoutLogin = () => {
@@ -193,7 +207,7 @@ const HomeScreen = () => {
   };
 
   const handleSupportNavigation = () => {
-    navigation.navigate('profile', { screen: 'support' });
+    router.push('/(tabs)/profile');
   };
 
   const filteredOffers = offers.filter(offer =>
@@ -223,9 +237,9 @@ const HomeScreen = () => {
               style={styles.profileIconContainer}
               onPress={() => {
                 if (isAuthenticated) {
-                  navigation.navigate('profile');
+                  router.push('/(tabs)/profile');
                 } else {
-                  navigation.navigate('auth');
+                  router.push('/(tabs)/auth');
                 }
               }}
             >
@@ -287,14 +301,27 @@ const HomeScreen = () => {
                   </TouchableOpacity>
                 </View>
 
-                <Image
-                  source={
-                    selectedOffer?.image
-                      ? { uri: selectedOffer.image }
-                      : hiringPlaceholder
-                  }
-                  style={styles.modalImage}
-                />
+                <View style={styles.modalImageContainer}>
+                  {imageLoading && selectedOffer?.imageUrl && (
+                    <ActivityIndicator
+                      size="large"
+                      color="#558B2F"
+                      style={styles.imageSpinner}
+                    />
+                  )}
+                  <Image
+                    source={
+                      selectedOffer?.imageUrl
+                        ? { uri: selectedOffer.imageUrl }
+                        : hiringPlaceholder
+                    }
+                    style={styles.modalImage}
+                    onLoadStart={() => setImageLoading(true)}
+                    onLoad={() => setImageLoading(false)}
+                    onLoadEnd={() => setImageLoading(false)}
+                    onError={() => setImageLoading(false)}
+                  />
+                </View>
 
                 <Text style={styles.modalCompany}>{selectedOffer?.company}</Text>
 
@@ -336,22 +363,52 @@ const HomeScreen = () => {
                 </View>
 
               </ScrollView>
-              
-              {!isEnterprise && (
-                <TouchableOpacity
-                  style={[styles.applyButton, applying && styles.applyButtonDisabled]}
-                  onPress={handleApply}
-                  disabled={applying}
-                >
-                  {applying ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.applyButtonText}>
-                      {isAuthenticated ? 'Postularse ahora' : 'Iniciar sesión para postularse'}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              )}
+
+              {!isEnterprise && (() => {
+                let btnText: string;
+                let btnAction: (() => void) | null;
+                let btnDisabled: boolean;
+
+                if (!isAuthenticated) {
+                  btnText = 'Inicia sesión para postularte';
+                  btnAction = () => {
+                    setIsModalVisible(false);
+                    router.push('/(tabs)/auth');
+                  };
+                  btnDisabled = false;
+                } else if (alreadyApplied) {
+                  btnText = 'Ya te postulaste a esta oferta';
+                  btnAction = null;
+                  btnDisabled = true;
+                } else if (!hasResume) {
+                  btnText = 'Completa tu hoja de vida para postularte';
+                  btnAction = () => {
+                    setIsModalVisible(false);
+                    router.push('/(tabs)/profile/edit-profile');
+                  };
+                  btnDisabled = false;
+                } else {
+                  btnText = 'Aplicar a esta oferta';
+                  btnAction = handleApply;
+                  btnDisabled = applying;
+                }
+
+                const isGray = btnDisabled && alreadyApplied;
+
+                return (
+                  <TouchableOpacity
+                    style={[styles.applyButton, (applying || isGray) && styles.applyButtonDisabled]}
+                    onPress={() => btnAction?.()}
+                    disabled={btnDisabled}
+                  >
+                    {applying ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.applyButtonText}>{btnText}</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })()}
             </View>
           </View>
         </Modal>
@@ -602,11 +659,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 15,
   },
+  modalImageContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 150,
+    marginBottom: 15,
+  },
+  imageSpinner: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    zIndex: 1,
+  },
   modalImage: {
     width: '100%',
     height: 150,
     borderRadius: 15,
-    marginBottom: 15,
     resizeMode: 'cover',
   },
   modalTitle: {

@@ -1,7 +1,8 @@
+import { apiFetch } from '@/lib/apiClient';
 import hiringPlaceholder from '@/assets/images/hiring.png';
 import logo from '@/assets/images/logo.png';
 import GradientBackground from '@/components/GradientBackground';
-import { useAuth } from '@/context/AuthContext';
+import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -16,10 +17,8 @@ const nariñoMunicipalities = [
 ];
 
 // URLs de los servicios
-const PRESIGNED_URL_API = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/offers/generatePresignedUrl';
-const CREATE_OFFER_API = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/offers/createOffer';
-// 🆕 Nueva URL para obtener el perfil y sacar el nombre de la empresa
-const GET_PROFILE_API = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/profile/getProfile';
+const PRESIGNED_URL_API = `${process.env.EXPO_PUBLIC_API_URL}/offers/generatePresignedUrl`;
+const CREATE_OFFER_API = `${process.env.EXPO_PUBLIC_API_URL}/offers/createOffer`;
 
 interface OfferData {
   title: string;
@@ -46,9 +45,8 @@ interface OfferErrors {
 
 const CreateOfferScreen = () => {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user } = useAuthStore();
   const [loading, setLoading] = useState(false);
-  const [profileLoading, setProfileLoading] = useState(true); // Estado para carga de perfil
   const [formErrors, setFormErrors] = useState<OfferErrors>({});
   const [offerData, setOfferData] = useState<OfferData>({
     title: '',
@@ -62,6 +60,7 @@ const CreateOfferScreen = () => {
   });
   const [offerImage, setOfferImage] = useState<any>(null); 
   const [receiptImage, setReceiptImage] = useState<any>(null); 
+  const [salaryDisplay, setSalaryDisplay] = useState('');
 
   // --- Funciones de Toast ---
   const showToast = (message: string, type: 'error' | 'success' = 'error') => {
@@ -73,30 +72,6 @@ const CreateOfferScreen = () => {
     });
   };
 
-  // 🆕 EFECTO: Cargar nombre de la empresa desde el perfil
-  useEffect(() => {
-    const fetchCompanyInfo = async () => {
-      if (user?.sub) {
-        try {
-          setProfileLoading(true);
-          const response = await fetch(`${GET_PROFILE_API}/${user.sub}`);
-          if (response.ok) {
-            const data = await response.json();
-            // Si existe nombre de empresa en el perfil, lo seteamos
-            if (data.profile && data.profile.nombre_empresa) {
-               setOfferData(prev => ({ ...prev, company: data.profile.nombre_empresa }));
-            }
-          }
-        } catch (error) {
-          console.log("Error fetching company info", error);
-        } finally {
-          setProfileLoading(false);
-        }
-      }
-    };
-    fetchCompanyInfo();
-  }, [user]);
-  
   // --- Función de Validación ---
   const validateForm = (data: OfferData) => {
     const errors: OfferErrors = {};
@@ -124,6 +99,21 @@ const CreateOfferScreen = () => {
     return Object.keys(errors).length === 0;
   };
 
+  const formatCOP = (raw: string) => {
+    if (!raw) return '';
+    const num = parseInt(raw, 10);
+    return `$ ${num.toLocaleString('es-CO')}`;
+  };
+
+  const handleSalaryChange = (value: string) => {
+    const raw = value.replace(/\D/g, '');
+    setOfferData(prev => ({ ...prev, salary: raw }));
+    setSalaryDisplay(formatCOP(raw));
+    if (formErrors.salary) {
+      setFormErrors(prev => ({ ...prev, salary: undefined }));
+    }
+  };
+
   // Handler para limpiar errores al cambiar inputs
   const handleChange = (field: keyof OfferData, value: string) => {
     setOfferData(prev => ({ ...prev, [field]: value }));
@@ -132,21 +122,17 @@ const CreateOfferScreen = () => {
     }
   };
 
-  // Función para subir archivo a S3
+  // Función para subir archivo a S3 y obtener URL pública
   const uploadFileToS3 = async (fileUri, fileName, fileType, fileCategory = 'images') => {
     try {
-      // 1. Obtener signed URL del backend
-      const response = await fetch(PRESIGNED_URL_API, {
+      // 1. Obtener signed URL del backend (con autenticación)
+      const data = await apiFetch(PRESIGNED_URL_API, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        authenticated: true,
         body: JSON.stringify({ fileName, fileType, fileCategory }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Error obteniendo signed URL: ${response.status}`);
-      }
-
-      const { signedUrl, key } = await response.json();
+      const { signedUrl, url } = data;
 
       // 2. Leer y subir a S3
       const fileResponse = await fetch(fileUri);
@@ -159,7 +145,7 @@ const CreateOfferScreen = () => {
       });
 
       if (uploadResponse.ok) {
-        return key;
+        return url;
       } else {
         throw new Error('Error subiendo archivo a S3');
       }
@@ -222,11 +208,10 @@ const CreateOfferScreen = () => {
     try {
       console.log('Iniciando proceso de creación de oferta...');
 
-      let imageKey = null;
+      let imageUrl = '';
 
-      // Subir imagen de la oferta (si existe)
       if (offerImage) {
-        imageKey = await uploadFileToS3(
+        imageUrl = await uploadFileToS3(
           offerImage.uri, 
           offerImage.fileName, 
           offerImage.type,
@@ -234,32 +219,24 @@ const CreateOfferScreen = () => {
         );
       }
 
-      // Preparar datos para crear la oferta
+      const companyName = (user as any).companyName || 'Mi Empresa';
+
       const offerPayload = {
         titulo: offerData.title,
-        empresa: offerData.company || null, // Se enviará el nombre cargado automáticamente
-        descripcion: offerData.description,
-        municipio: offerData.location,
-        tipo_trabajo: offerData.workplaceType,
+        empresa: companyName,
+        ubicacion: offerData.location,
         salario: parseInt(offerData.salary.replace(/\D/g, '')) || 0,
         tipo_contrato: offerData.contractType,
+        descripcion: offerData.description,
+        requisitos: imageUrl,
         cupos: parseInt(offerData.availablePositions) || 1,
-        imagen: imageKey, 
-        createdBy: `USER#${user.sub}`,
-        creatorEmail: user.email
       };
 
-      // Crear la oferta
-      const offerResponse = await fetch(CREATE_OFFER_API, {
+      await apiFetch(`${CREATE_OFFER_API}/${user.sub}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        authenticated: true,
         body: JSON.stringify(offerPayload),
       });
-
-      if (!offerResponse.ok) {
-        const errorText = await offerResponse.text();
-        throw new Error(`Error creando oferta: ${errorText}`);
-      }
 
       showToast('¡Oferta creada y en verificación!', 'success');
       
@@ -333,16 +310,6 @@ const CreateOfferScreen = () => {
             />
             {getErrorMessage('title')}
 
-            {/* 🚨 CAMPO EMPRESA: Solo lectura y precargado */}
-            <Text style={styles.label}>Nombre de la empresa</Text>
-            <TextInput
-              style={[styles.input, styles.disabledInput]} // Aplicamos estilo deshabilitado
-              placeholder={profileLoading ? "Cargando..." : "Nombre de la empresa"}
-              value={offerData.company}
-              onChangeText={(text) => handleChange('company', text)}
-              editable={false} // 🚨 NO SE PUEDE EDITAR
-            />
-
             <Text style={[styles.label, !!formErrors.description && styles.errorLabel]}>Descripción del trabajo *</Text>
             <TextInput
               style={[styles.input, styles.textArea, !!formErrors.description && styles.inputError]}
@@ -389,10 +356,10 @@ const CreateOfferScreen = () => {
             <Text style={[styles.label, !!formErrors.salary && styles.errorLabel]}>Salario (mensual) *</Text>
             <TextInput
               style={[styles.input, !!formErrors.salary && styles.inputError]}
-              placeholder="Ej. 1800000"
+              placeholder="$ 1.800.000"
               keyboardType="numeric"
-              value={offerData.salary}
-              onChangeText={(text) => handleChange('salary', text)}
+              value={salaryDisplay}
+              onChangeText={handleSalaryChange}
               editable={!loading}
             />
             {getErrorMessage('salary')}

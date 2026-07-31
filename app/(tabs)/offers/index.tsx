@@ -1,5 +1,6 @@
+import { apiFetch } from '@/lib/apiClient';
 import GradientBackground from '@/components/GradientBackground';
-import { useAuth } from '@/context/AuthContext';
+import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Link, useRouter } from 'expo-router';
@@ -21,10 +22,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import hiringPlaceholder from '@/assets/images/hiring.png';
 import logo from '@/assets/images/logo.png';
 
-const API_BASE = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/offers/getOffersByUser';
+const API_BASE = `${process.env.EXPO_PUBLIC_API_URL}/offers/getOffersByUser`;
 // Constantes para el cambio de estado
-const UPDATE_STATUS_API = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/offers/updateOfferStatus';
-const USER_ID_CONSTANT = "USER#31abb5f0-a011-70b5-727b-461fc578ac51";
+const UPDATE_STATUS_API = `${process.env.EXPO_PUBLIC_API_URL}/offers/updateOfferStatus`;
 // Email de administrador
 const ADMIN_EMAIL = 'carlos87jaramillo@gmail.com';
 
@@ -40,6 +40,7 @@ const OFFER_STATUSES = [
     'Todos', 
     'activo', 
     'inactivo',
+    'cerrada',
     'verificando pago'
 ];
 
@@ -62,22 +63,28 @@ const formatCurrency = (value) => {
 };
 
 // Mapear la respuesta del backend al shape esperado por la UI
+const STATUS_LABELS = {
+  'ACTIVE': 'activo',
+  'INACTIVE': 'inactivo',
+  'PENDING_PAYMENT': 'verificando_pago',
+  'CLOSED': 'cerrada',
+};
+
 const mapOffer = (offer) => ({
-  id: offer.pk || offer.id || `${offer.titulo}-${offer.created_at}`,
-  title: offer.titulo || '',
-  company: offer.empresa || '',
-  description: offer.descripcion || '',
-  location: offer.municipio || '',
-  workplaceType: offer.tipo_trabajo || '',
-  availablePositions: offer.cupos ?? 0,
-  salary: formatCurrency(offer.salario),
-  contractType: offer.tipo_contrato || '',
-  offerStatus: offer.estado || 'verificando_pago', // Default seguro para evitar 'undefined'
-  image: offer.imagen ? getImageUri(offer.imagen) : '', // cadena vacía si no hay imagen
-  applicants: offer.applicants || [], // placeholder
-  raw: offer, // guardamos raw por si la necesitamos luego
-  // ASUME que comprobante_pago está en el objeto 'raw' del backend
-  paymentProofImageKey: offer.comprobante_pago || null, 
+  id: offer.id,
+  title: offer.title || '',
+  company: offer.company?.name || '',
+  description: offer.description || '',
+  location: offer.location || '',
+  workplaceType: offer.contractType || '',
+  salary: formatCurrency(offer.salary),
+  contractType: offer.contractType || '',
+  offerStatus: STATUS_LABELS[offer.status] || 'verificando_pago',
+  applicantCount: offer._count?.applications ?? (Array.isArray(offer.applicants) ? offer.applicants.length : 0),
+  paymentProofImageKey: offer.paymentProofImageKey || null,
+  createdAt: offer.createdAt || new Date().toISOString(),
+  imageUrl: offer.requirements || null,
+  availablePositions: offer.availablePositions ?? 1,
 });
 
 // CORRECCIÓN 1: Asegurar que 'status' no sea nulo o indefinido antes de toLowerCase()
@@ -96,6 +103,8 @@ const getStatusStyle = (status) => {
         normalizedStatus = 'verificando_pago';
     } else if (normalizedStatus === 'activa' || normalizedStatus === 'activo') {
         normalizedStatus = 'activa';
+    } else if (normalizedStatus === 'cerrada') {
+        normalizedStatus = 'cerrada';
     }
     
     switch (normalizedStatus) {
@@ -106,6 +115,8 @@ const getStatusStyle = (status) => {
       case 'inactiva': 
       case 'inactivo':
         return styles.statusExpired;
+      case 'cerrada':
+        return styles.statusClosed;
       case 'verificando_pago':
       case 'en espera de pago':
       case 'verificando pago': 
@@ -135,6 +146,10 @@ const OfferCard = ({ offer, onPress }) => (
       <View style={styles.detailItem}>
         <Ionicons name="cash-outline" size={14} color="#666666" />
         <Text style={styles.detailText}>{offer.salary}</Text>
+      </View>
+      <View style={styles.detailItem}>
+        <Ionicons name="people-outline" size={14} color="#666666" />
+        <Text style={styles.detailText}>{offer.applicantCount} postulante(s)</Text>
       </View>
     </View>
     <TouchableOpacity style={styles.detailsButton} onPress={() => onPress(offer)}>
@@ -211,15 +226,16 @@ const ModalStatusChip = ({ status, isSelected, onPress, disabled }) => {
 
 const OffersScreen = () => {
   const router = useRouter();
-  const { user, getUserData } = useAuth();
+  const { user } = useAuthStore();
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState(null);
   const [selectedStatus, setSelectedStatus] = useState('Todos'); 
   const [searchText, setSearchText] = useState(''); 
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false); // Estado de carga para el modal
-  const [isAdmin, setIsAdmin] = useState(false); // Estado para verificar si es administrador
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [imageLoading, setImageLoading] = useState(false);
 
   const fetchOffers = async () => {
     setLoading(true);
@@ -230,26 +246,15 @@ const OffersScreen = () => {
       }
       
       // Lógica para establecer isAdmin
-      // Nota: usé user.email ya que es la propiedad más probable para verificar el email en el contexto de useAuth
       setIsAdmin(user.email === ADMIN_EMAIL); 
 
-      const cognitoId = user.sub;
-      const res = await fetch(`${API_BASE}/${encodeURIComponent(`${cognitoId}`)}`);
-
-      if (!res.ok) {
-        console.error('Error fetching offers, status:', res.status);
-        setOffers([]);
-        return;
-      }
-
-      const json = await res.json();
-      const backendData = json?.data || [];
+      const json = await apiFetch(`${API_BASE}/${user.sub}`, { authenticated: true });
+      const backendData = Array.isArray(json) ? json : (json?.data || []);
       const mapped = backendData.map(mapOffer);
 
-      // Orden descendente por created_at (si existe en raw)
       mapped.sort((a, b) => {
-        const da = new Date(a.raw?.created_at || a.raw?.createdAt || 0).getTime();
-        const db = new Date(b.raw?.created_at || b.raw?.createdAt || 0).getTime();
+        const da = new Date(a.createdAt || 0).getTime();
+        const db = new Date(b.createdAt || 0).getTime();
         return db - da;
       });
 
@@ -273,43 +278,23 @@ const OffersScreen = () => {
     setIsModalVisible(true);
   };
   
-  // Función para manejar el cambio de estado de la oferta
   const handleStatusChange = async (newStatus) => {
-    if (!selectedOffer || isUpdatingStatus || !isAdmin) return; 
+    if (!selectedOffer || isUpdatingStatus || !isAdmin) return;
 
-    // Normalizar el estado seleccionado para el backend (activo, inactivo, verificando_pago)
-    let statusToSend = newStatus.toLowerCase().replace(' ', '_');
-
-    // Extraer el offer_id real (si existe pk) o usar el ID mapeado
-    const offerId = selectedOffer.raw?.pk ? selectedOffer.raw.pk.replace('OFFER#', '') : selectedOffer.id;
-
-    const payload = {
-        offer_id: offerId,
-        status: statusToSend,
-        updated_by: USER_ID_CONSTANT,
-    };
-
+    const offerId = selectedOffer.id;
     setIsUpdatingStatus(true);
 
     try {
-        const res = await fetch(UPDATE_STATUS_API, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload),
+        await apiFetch(`${UPDATE_STATUS_API}/${offerId}/${user.sub}`, {
+            method: 'PUT',
+            authenticated: true,
+            body: JSON.stringify({ status: newStatus }),
         });
 
-        if (res.ok) {
-            // Actualizar el estado localmente y refrescar la lista
-            const updatedOffer = { ...selectedOffer, offerStatus: statusToSend };
-            setSelectedOffer(updatedOffer);
-            fetchOffers(); // Refrescar la lista en la vista principal
-            Alert.alert("Éxito", `El estado de la oferta se actualizó a: ${newStatus.toUpperCase()}`);
-        } else {
-            const errorData = await res.json();
-            Alert.alert("Error", `No se pudo actualizar el estado: ${errorData.message || res.statusText}`);
-        }
+        const updatedOffer = { ...selectedOffer, offerStatus: newStatus };
+        setSelectedOffer(updatedOffer);
+        fetchOffers();
+        Alert.alert("Éxito", `El estado de la oferta se actualizó a: ${newStatus.toUpperCase()}`);
     } catch (error) {
         console.error("Error al actualizar estado:", error);
         Alert.alert("Error", "Ocurrió un error de red al intentar actualizar el estado.");
@@ -443,22 +428,27 @@ const OffersScreen = () => {
                   </TouchableOpacity>
                 </View>
 
-                <Image
-                  source={
-                    selectedOffer?.image
-                      ? { uri: selectedOffer.image }
-                      : hiringPlaceholder
-                  }
-                  style={styles.modalImage}
-                  onError={(e) => {
-                    console.log('❌ Error cargando imagen en modal');
-                    console.log('URL intentada:', selectedOffer?.image);
-                    console.log('Key original:', selectedOffer?.raw?.imagen);
-                  }}
-                  onLoad={() => {
-                    console.log('✅ Imagen cargada exitosamente en modal');
-                  }}
-                />
+                <View style={styles.modalImageContainer}>
+                  {imageLoading && selectedOffer?.imageUrl && (
+                    <ActivityIndicator
+                      size="large"
+                      color="#558B2F"
+                      style={styles.imageSpinner}
+                    />
+                  )}
+                  <Image
+                    source={
+                      selectedOffer?.imageUrl
+                        ? { uri: selectedOffer.imageUrl }
+                        : hiringPlaceholder
+                    }
+                    style={styles.modalImage}
+                    onLoadStart={() => setImageLoading(true)}
+                    onLoad={() => setImageLoading(false)}
+                    onLoadEnd={() => setImageLoading(false)}
+                    onError={() => setImageLoading(false)}
+                  />
+                </View>
 
                 <Text style={styles.modalCompany}>{selectedOffer?.company}</Text>
 
@@ -548,17 +538,21 @@ const OffersScreen = () => {
                       {selectedOffer?.availablePositions}
                     </Text>
                   </View>
+                  <View style={styles.infoPill}>
+                    <Text style={styles.infoPillLabel}>Postulados:</Text>
+                    <Text style={styles.infoPillText}>
+                      {selectedOffer?.applicantCount ?? 0}
+                    </Text>
+                  </View>
                 </View>
 
                 <TouchableOpacity
                   style={styles.viewApplicantsButton}
                   onPress={() => {
                     setIsModalVisible(false);
-                    // CORREGIDO: Extraer solo el ID real sin "OFFER#"
-                    const realOfferId = selectedOffer?.raw?.pk ? selectedOffer.raw.pk.replace('OFFER#', '') : selectedOffer?.id;
                     router.push({
                       pathname: '/offers/applicants',
-                      params: { offerId: realOfferId },
+                      params: { offerId: selectedOffer?.id, offerTitle: selectedOffer?.title },
                     });
                   }}
                   disabled={isUpdatingStatus}
@@ -760,6 +754,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffe6e6',
     color: '#e64e4e',
   },
+  statusClosed: {
+    backgroundColor: '#eceff1',
+    color: '#546e7a',
+  },
   statusWaiting: { 
     backgroundColor: '#e6f2ff',
     color: '#0f79b5',
@@ -806,11 +804,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 15,
   },
+  modalImageContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 150,
+    marginBottom: 15,
+  },
+  imageSpinner: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    zIndex: 1,
+  },
   modalImage: {
     width: '100%',
     height: 150,
     borderRadius: 15,
-    marginBottom: 15,
     resizeMode: 'cover',
   },
   modalTitle: {

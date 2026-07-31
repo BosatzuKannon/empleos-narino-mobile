@@ -17,7 +17,7 @@ import logo from '@/assets/images/logo.png';
 // Importación de la gráfica de login (SVG)
 import loginGraphic from '@/assets/images/login_graphic.png';
 
-const API_URL = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/auth/forgotPassword';
+const API_URL = `${process.env.EXPO_PUBLIC_API_URL}/auth/forgot-password`;
 
 const ForgotPasswordScreen = () => {
   const router = useRouter();

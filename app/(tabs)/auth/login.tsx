@@ -1,6 +1,5 @@
 import GradientBackground from '@/components/GradientBackground';
-import { useAuth } from '@/context/AuthContext';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuthStore } from '@/store/authStore';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Image, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -15,7 +14,7 @@ import loginGraphic from '@/assets/images/login_graphic.png';
 
 const LoginScreen = () => {
   const router = useRouter();
-  const { signIn } = useAuth(); 
+  const { login } = useAuthStore(); 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [secureTextEntry, setSecureTextEntry] = useState(true);
@@ -40,49 +39,21 @@ const LoginScreen = () => {
   };
 
   const handleLogin = async () => {
-    // Validación de campos obligatorios
     if (!email || !password) {
       showToast('Por favor ingresa correo y contraseña.');
-      return; // Detiene el proceso si faltan campos
+      return;
     }
 
     setLoading(true);
     try {
-      const apiUrl = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/auth/signin';
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: email, password }),
-      });
-
-      const data = await response.json();
-      console.log('Respuesta login:', data);
-
-      if (response.ok && data.authenticationResult) {
-        const { AccessToken, IdToken } = data.authenticationResult;
-
-        // Creación de userData mínimo (asumiendo que el backend retorna más data al verificar IdToken)
-        const userData = { email }; 
-
-        // Guardar sesión en el contexto
-        await signIn(IdToken, userData);
-
-        // Almacenar AccessToken
-        try {
-          await AsyncStorage.setItem('accessToken', AccessToken);
-        } catch (e) {
-          console.warn('No se pudo guardar accessToken:', e);
-        }
-        
+      const result = await login(email, password);
+      
+      if (result.success) {
         showSuccessToast('Inicio de sesión exitoso.');
-        
-        // Redirigir a la pantalla principal
         router.replace('/(tabs)');
-        return;
+      } else {
+        showToast(result.error || 'Credenciales inválidas');
       }
-
-      // Si llegó error desde backend
-      showToast(data.message || data.error || 'Credenciales inválidas');
     } catch (error) {
       console.error('Error en login:', error);
       showToast('No se pudo conectar con el servidor.');

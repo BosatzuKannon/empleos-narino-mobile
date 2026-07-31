@@ -2,6 +2,7 @@ import GradientBackground from '@/components/GradientBackground';
 import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
+import { useAuthStore } from '@/store/authStore';
 import {
     ActivityIndicator,
     Modal,
@@ -52,6 +53,7 @@ const PasswordRequirements = ({ password }) => {
 
 const RegisterScreen = () => {
     const router = useRouter();
+    const { signUp } = useAuthStore();
     
     // Estado para el tipo de usuario ('applicant' o 'enterprise')
     const [userType, setUserType] = useState<'applicant' | 'enterprise'>('applicant');
@@ -159,41 +161,27 @@ const RegisterScreen = () => {
         try {
             const sanitizedPhoneNumber = phoneNumber.replace(/\D/g, '');
 
-            // Determinar valores según tipo de usuario
-            const finalUserType = userType; 
-            const finalBirthDate = userType === 'applicant' ? birthDate.trim() : '2000-01-01'; // Dummy date para empresas
+            const finalUserType = userType === 'enterprise' ? 'COMPANY_ADMIN' : 'CANDIDATE';
+            const finalBirthDate = userType === 'applicant' ? birthDate.trim() : '2000-01-01';
             const finalCompany = userType === 'enterprise' ? companyName.trim() : "";
 
-            const apiUrl = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/auth/signup';
-            
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email: email.trim(),
-                    password,
-                    nombres: firstName.trim(),
-                    apellidos: lastName.trim(),
-                    telefono: `+57${sanitizedPhoneNumber}`,
-                    user_type: finalUserType,
-                    fecha_nacimiento: finalBirthDate,
-                    ciudad: city,
-                    nombre_empresa: finalCompany
-                }),
+            const result = await signUp({
+                email: email.trim(),
+                password,
+                nombres: firstName.trim(),
+                apellidos: lastName.trim(),
+                telefono: `+57${sanitizedPhoneNumber}`,
+                user_type: finalUserType,
+                fecha_nacimiento: finalBirthDate,
+                ciudad: city,
+                nombre_empresa: finalCompany
             });
 
-            if (response.ok) {
-                console.log('Registro exitoso para:', email);
-                showSuccessToast('Registro exitoso. Inicia sesión.');
-                router.push({
-                    pathname: '/auth/login',
-                    params: { email: email.trim() },
-                });
+            if (result.success) {
+                showSuccessToast('Registro exitoso. Ahora puedes iniciar sesión.');
+                router.replace('/auth/login');
             } else {
-                const errorData = await response.json();
-                showToast(errorData.message || 'Error al registrar usuario.');
+                showToast(result.error || 'Error al registrar usuario.');
             }
         } catch (error) {
             console.error('Error:', error);

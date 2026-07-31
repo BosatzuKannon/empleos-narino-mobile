@@ -16,7 +16,7 @@ import Toast from 'react-native-toast-message';
 import loginGraphic from '@/assets/images/login_graphic.png';
 import logo from '@/assets/images/logo.png';
 
-const API_URL = 'https://2282qxh1me.execute-api.us-east-2.amazonaws.com/dev/auth/confirmNewPassword';
+const API_URL = `${process.env.EXPO_PUBLIC_API_URL}/auth/confirm-new-password`;
 
 // --- CONSTANTES Y COMPONENTES DE VALIDACIÓN DE CONTRASEÑA ---
 const SPECIAL_CHARS_SET = '!@#$%^&*(),.?":{}|<>+-=';
