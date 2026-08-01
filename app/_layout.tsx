@@ -1,12 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from 'expo-linking';
-import { Stack, useRouter, useSegments } from "expo-router";
+import * as Notifications from 'expo-notifications';
+import { Stack, useRouter, useSegments, type Href } from "expo-router";
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { PaperProvider } from "react-native-paper";
 import Toast from "react-native-toast-message";
+import { toastConfig } from '@/components/toast/ToastConfig';
+import { paperTheme } from '@/constants/Theme';
 import { configureNotifications, registerPushToken } from '@/lib/pushNotifications';
+import { extractRouteFromResponse } from '@/lib/notificationRouting';
 import { useAuthStore } from '@/store/authStore';
 
 // URL de la Play Store
@@ -143,12 +147,36 @@ function MainNavigation() {
   const segments = useSegments(); 
 
   const [hasRedirected, setHasRedirected] = useState(false);
+  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
 
   const protectedRoutes = ['applications', 'offers', 'profile'];
   const currentTopSegment = segments[0];
   const isAuthRoute = currentTopSegment === 'auth';
   const isOnboardingScreen = currentTopSegment === 'onboarding';
   const isTryingToAccessProtected = protectedRoutes.includes(segments[1] ?? ''); 
+
+  // Deep linking: escucha el toque en una notificación y guarda la ruta destino
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        setPendingRoute(extractRouteFromResponse(response));
+      },
+    );
+
+    // App abierta desde la notificación (estado muerto o en segundo plano)
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      setPendingRoute(extractRouteFromResponse(response));
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  // Navega a la ruta pendiente solo cuando el usuario está autenticado y la app lista
+  useEffect(() => {
+    if (!pendingRoute || !isAuthenticated || isOutdated || isLoading) return;
+    router.navigate(pendingRoute as Href);
+    setPendingRoute(null);
+  }, [pendingRoute, isAuthenticated, isOutdated, isLoading, router]);
   
   useEffect(() => {
     // Si ya redirigimos o no estamos listos, no hacer nada
@@ -228,17 +256,17 @@ export default function RootLayout() {
       await checkAppVersion();
 
       if (useAuthStore.getState().isAuthenticated) {
-        configureNotifications();
-        registerPushToken();
+        await configureNotifications();
+        await registerPushToken();
       }
     };
     init();
   }, []);
 
   return (
-    <PaperProvider>
+    <PaperProvider theme={paperTheme}>
       <MainNavigation />
-      <Toast /> 
+      <Toast config={toastConfig} /> 
     </PaperProvider>
   );
 }

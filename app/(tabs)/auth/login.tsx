@@ -51,8 +51,8 @@ const LoginScreen = () => {
       
       if (result.success) {
         showSuccessToast('Inicio de sesión exitoso.');
-        configureNotifications();
-        registerPushToken();
+        await configureNotifications();
+        await registerPushToken();
         router.replace('/(tabs)');
       } else {
         showToast(result.error || 'Credenciales inválidas');

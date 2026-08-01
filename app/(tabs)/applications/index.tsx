@@ -1,5 +1,6 @@
 import { apiFetch } from '@/lib/apiClient';
 import GradientBackground from '@/components/GradientBackground';
+import { useAppAlerts } from '@/hooks/useAppAlerts';
 import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -7,7 +8,6 @@ import { Link } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   ScrollView,
@@ -157,6 +157,7 @@ const StatusChip = ({ status, isSelected, onPress }: { status: string, isSelecte
 
 const ApplicationsScreen = () => {
   const { user } = useAuthStore();
+  const { showSuccess, showError, confirm, dialogElement } = useAppAlerts();
   
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<any>(null);
@@ -222,14 +223,26 @@ const ApplicationsScreen = () => {
       );
       setApplications(updatedApplications);
       setSelectedApplication({ ...selectedApplication, status: 'cancelada' });
-      Alert.alert('Éxito', json.message || 'Postulación cancelada exitosamente');
+      showSuccess(json.message || 'Postulación cancelada exitosamente');
     } catch (err) {
       console.error('Error cancelando postulación:', err);
       const msg = (err as any)?.message || 'No se pudo cancelar la postulación';
-      Alert.alert('Error', msg);
+      showError(msg);
     } finally {
       setCanceling(false);
     }
+  };
+
+  const handleCancelPress = async () => {
+    const ok = await confirm({
+      title: 'Cancelar postulación',
+      message: '¿Estás seguro de que deseas cancelar esta postulación? Esta acción no se puede deshacer.',
+      variant: 'danger',
+      confirmText: 'Sí, cancelar',
+      cancelText: 'Volver',
+    });
+    if (!ok) return;
+    await handleCancelApplication();
   };
 
   const handleSelectApplication = (application: any) => {
@@ -420,7 +433,7 @@ const ApplicationsScreen = () => {
                   CANCELABLE_STATUSES.includes(selectedApplication.status) && (
                     <TouchableOpacity
                       style={[styles.cancelButton, canceling && styles.cancelButtonDisabled]}
-                      onPress={handleCancelApplication}
+                      onPress={handleCancelPress}
                       disabled={canceling}
                     >
                       {canceling ? (
@@ -454,6 +467,7 @@ const ApplicationsScreen = () => {
           </View>
         </Modal>
       </SafeAreaView>
+      {dialogElement}
     </GradientBackground>
   );
 };
