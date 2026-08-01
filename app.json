@@ -2,7 +2,7 @@
   "expo": {
     "name": "Empleos Nariño",
     "slug": "empleos-narino",
-    "version": "1.7.2",
+    "version": "1.7.5",
     "orientation": "default",
     "icon": "./assets/images/logo2.png",
     "scheme": "EmpleosNariño",
@@ -22,7 +22,7 @@
         "barStyle": "dark-content"
       },
       "package": "com.bosatzu.empleosnarino",
-      "versionCode": 19,
+      "versionCode": 20,
       "googleServicesFile": "./google-services.json",
       "splash": {
         "backgroundColor": "#ffffff",
