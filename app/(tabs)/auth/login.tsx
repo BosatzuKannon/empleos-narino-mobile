@@ -1,4 +1,5 @@
 import GradientBackground from '@/components/GradientBackground';
+import { configureNotifications, registerPushToken } from '@/lib/pushNotifications';
 import { useAuthStore } from '@/store/authStore';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
@@ -50,6 +51,8 @@ const LoginScreen = () => {
       
       if (result.success) {
         showSuccessToast('Inicio de sesión exitoso.');
+        configureNotifications();
+        registerPushToken();
         router.replace('/(tabs)');
       } else {
         showToast(result.error || 'Credenciales inválidas');

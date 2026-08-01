@@ -21,6 +21,11 @@ const SETTINGS_OPTIONS = [
   { icon: 'create-outline', title: 'Configuración de Perfil', description: 'Edita tu información personal', route: 'edit-profile' },
 ];
 
+// --- Opciones de la Sección de Preferencias ---
+const PREFERENCES_OPTIONS = [
+  { icon: 'notifications-outline', title: 'Configuración', description: 'Notificaciones y preferencias', route: 'settings' },
+];
+
 // --- Opciones de la Sección Acerca de ---
 const ABOUT_OPTIONS = [
   { icon: 'help-circle-outline', title: 'Centro de Ayuda', description: '', route: 'help' },
@@ -51,6 +56,9 @@ const ProfileScreen = () => {
         break;
       case 'edit-profile':
         router.push('/profile/edit-profile');
+        break;
+      case 'settings':
+        router.push('/profile/settings');
         break;
       case 'support':
         router.push('/profile/support');
@@ -146,6 +154,20 @@ const ProfileScreen = () => {
             ))}
           </View>
           
+          {/* --- Sección de PREFERENCIAS --- */}
+          <Text style={styles.sectionTitle}>Preferencias</Text>
+          <View style={styles.optionsGroup}>
+            {PREFERENCES_OPTIONS.map((item) => (
+              <SettingsListItem
+                key={item.title}
+                icon={item.icon}
+                title={item.title}
+                description={item.description}
+                onPress={() => handlePress(item.route)}
+              />
+            ))}
+          </View>
+
           {/* --- Sección de ACERCA DE --- */}
           <Text style={styles.sectionTitle}>Acerca de</Text>
           <View style={styles.optionsGroup}>

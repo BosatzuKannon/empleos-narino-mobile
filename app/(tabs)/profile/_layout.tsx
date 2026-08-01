@@ -7,6 +7,7 @@ export default function OffersStackLayout() {
       <Stack.Screen name="index" />
       <Stack.Screen name="support" />
       <Stack.Screen name="edit-profile" />
+      <Stack.Screen name="settings" />
       <Stack.Screen name="help" />
       <Stack.Screen name="terms" />
       <Stack.Screen name="privacy" />

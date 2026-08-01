@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { PaperProvider } from "react-native-paper";
 import Toast from "react-native-toast-message";
+import { configureNotifications, registerPushToken } from '@/lib/pushNotifications';
 import { useAuthStore } from '@/store/authStore';
 
 // URL de la Play Store
@@ -147,7 +148,7 @@ function MainNavigation() {
   const currentTopSegment = segments[0];
   const isAuthRoute = currentTopSegment === 'auth';
   const isOnboardingScreen = currentTopSegment === 'onboarding';
-  const isTryingToAccessProtected = protectedRoutes.includes(segments[1]); 
+  const isTryingToAccessProtected = protectedRoutes.includes(segments[1] ?? ''); 
   
   useEffect(() => {
     // Si ya redirigimos o no estamos listos, no hacer nada
@@ -225,6 +226,11 @@ export default function RootLayout() {
     const init = async () => {
       await initializeAuth();
       await checkAppVersion();
+
+      if (useAuthStore.getState().isAuthenticated) {
+        configureNotifications();
+        registerPushToken();
+      }
     };
     init();
   }, []);

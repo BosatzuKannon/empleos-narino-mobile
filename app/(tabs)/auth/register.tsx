@@ -178,8 +178,11 @@ const RegisterScreen = () => {
             });
 
             if (result.success) {
-                showSuccessToast('Registro exitoso. Ahora puedes iniciar sesión.');
-                router.replace('/auth/login');
+                showSuccessToast('Registro exitoso. Revisa tu correo para activar tu cuenta.');
+                router.replace({
+                    pathname: '/auth/email-confirmation',
+                    params: { email: email.trim() }
+                });
             } else {
                 showToast(result.error || 'Error al registrar usuario.');
             }
