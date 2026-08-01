@@ -21,7 +21,6 @@
         "backgroundColor": "#00000000",
         "barStyle": "dark-content"
       },
-      "edgeToEdgeEnabled": true,
       "package": "com.bosatzu.empleosnarino",
       "versionCode": 18,
       "googleServicesFile": "./google-services.json",

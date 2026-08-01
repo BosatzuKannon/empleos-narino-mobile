@@ -26,6 +26,11 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
+      # 1. PRIMERO creamos el archivo de Firebase ANTES del prebuild
+      - name: Create google-services.json
+        run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > google-services.json
+
+      # 2. AHORA Expo ya puede encontrar el archivo y compilar
       - name: Expo Prebuild
         run: npx expo prebuild --platform android --clean
 
@@ -48,10 +53,9 @@ jobs:
             -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
             -Pandroid.injected.signing.key.password=$KEY_PASSWORD
 
+      # 3. Creamos el archivo EXACTO que Fastlane necesita para subir a la tienda
       - name: Create Google Play Config JSON
-        env:
-          PLAY_CONFIG_JSON: ${{ secrets.PLAY_CONFIG_JSON }}
-        run: echo "$PLAY_CONFIG_JSON" > google-play.json
+        run: echo '${{ secrets.PLAY_CONFIG_JSON }}' > google-play.json
 
       - name: Setup Ruby for Fastlane
         uses: ruby/setup-ruby@v1
