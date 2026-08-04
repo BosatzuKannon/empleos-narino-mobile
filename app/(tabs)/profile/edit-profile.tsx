@@ -1,5 +1,6 @@
 import GradientBackground from '@/components/GradientBackground';
 import { useAuthStore } from '@/store/authStore';
+import { isCandidateUser, isEnterpriseUser } from '@/lib/roleUtils';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -64,9 +65,8 @@ const EditProfileScreen = () => {
     }
   }, [isAuthenticated, user]);
 
-  const userRole = user?.['custom:user_type'] || '';
-  const isApplicant = userRole === 'CANDIDATE' || userRole === 'applicant';
-  const isEnterprise = userRole === 'COMPANY_ADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'enterprise';
+  const isApplicant = isCandidateUser(user);
+  const isEnterprise = isEnterpriseUser(user);
 
   const [profileData, setProfileData] = useState<Profile>({
     nombres: '',

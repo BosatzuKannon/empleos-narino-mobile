@@ -6,10 +6,14 @@ import ServiceCard from '@/components/ServiceCard';
 import ServiceDetailsModal from '@/components/ServiceDetailsModal';
 import { fetchActiveServices, type Service } from '@/lib/services';
 import { useAuthStore } from '@/store/authStore';
+import {
+  getUserRole,
+  isEnterpriseUser,
+} from '@/lib/roleUtils';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -139,11 +143,14 @@ const HomeScreen = () => {
   const [alreadyApplied, setAlreadyApplied] = useState(false);
   const [hasResume, setHasResume] = useState(false);
 
-  const isEnterprise = user
-    ? (user['custom:user_type'] === 'COMPANY_ADMIN' ||
-       user['custom:user_type'] === 'SUPER_ADMIN' ||
-       user['custom:user_type'] === 'enterprise')
-    : false;
+  const isEnterprise = isEnterpriseUser(user);
+
+  // DEBUG: expone la estructura real del token/usuario y el rol detectado
+  useEffect(() => {
+    console.log('Current User Data/Role:', user);
+    console.log('Detected Role (normalized):', getUserRole(user));
+    console.log('isEnterprise:', isEnterprise, '| showTabSelector:', !isEnterprise);
+  }, [user, isEnterprise]);
 
   // Empresas SOLO ven el feed de servicios; candidatos ven ambos feeds.
   const showTabSelector = !isEnterprise;

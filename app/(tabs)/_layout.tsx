@@ -1,4 +1,5 @@
 import { useAuthStore } from '@/store/authStore';
+import { getUserRole, isCandidateUser, isEnterpriseUser } from '@/lib/roleUtils';
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router/tabs';
 import LottieView from 'lottie-react-native';
@@ -111,9 +112,17 @@ const ServiceStatusBanner = () => {
 const TabLayout = () => {
     const { isAuthenticated, isLoading, user } = useAuthStore();
 
-    const userRole = user?.['custom:user_type'] || '';
-    const isApplicant = userRole === 'CANDIDATE';
-    const isEnterprise = userRole === 'COMPANY_ADMIN' || userRole === 'SUPER_ADMIN';
+    // DEBUG: expone la estructura real del token/usuario y el rol detectado
+    useEffect(() => {
+        console.log('Current User Data/Role:', user);
+        console.log('Detected Role (normalized):', getUserRole(user));
+        console.log('isAuthenticated:', isAuthenticated, '| isCandidate:', isCandidateUser(user), '| isEnterprise:', isEnterpriseUser(user));
+    }, [user, isAuthenticated]);
+
+    // BULLETPROOF role detection (handles uppercase/lowercase, nested metadata,
+    // cognito groups and unknown-role fallback to candidate).
+    const isApplicant = isCandidateUser(user);
+    const isEnterprise = isEnterpriseUser(user);
 
     if (isLoading) {
         return null; 
