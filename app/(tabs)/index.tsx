@@ -2,6 +2,9 @@ import hiringPlaceholder from '@/assets/images/hiring.png';
 import logo from '@/assets/images/logo.png';
 import { apiFetch } from '@/lib/apiClient';
 import GradientBackground from '@/components/GradientBackground';
+import ServiceCard from '@/components/ServiceCard';
+import ServiceDetailsModal from '@/components/ServiceDetailsModal';
+import { fetchActiveServices, type Service } from '@/lib/services';
 import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -79,12 +82,48 @@ const OfferCard = ({ offer, onPress }: { offer: any, onPress: (offer: any) => vo
   </TouchableOpacity>
 );
 
+type FeedTab = 'offers' | 'services';
+
+const FeedSegmentedControl = ({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: FeedTab;
+  onTabChange: (tab: FeedTab) => void;
+}) => (
+  <View style={styles.segmentedContainer}>
+    <TouchableOpacity
+      style={[styles.segmentButton, activeTab === 'offers' && styles.segmentButtonActive]}
+      onPress={() => onTabChange('offers')}
+    >
+      <Ionicons name="briefcase-outline" size={16} color={activeTab === 'offers' ? '#FFFFFF' : '#666666'} />
+      <Text style={[styles.segmentText, activeTab === 'offers' && styles.segmentTextActive]}>
+        Empleos
+      </Text>
+    </TouchableOpacity>
+    <TouchableOpacity
+      style={[styles.segmentButton, activeTab === 'services' && styles.segmentButtonActive]}
+      onPress={() => onTabChange('services')}
+    >
+      <Ionicons name="construct-outline" size={16} color={activeTab === 'services' ? '#FFFFFF' : '#666666'} />
+      <Text style={[styles.segmentText, activeTab === 'services' && styles.segmentTextActive]}>
+        Servicios
+      </Text>
+    </TouchableOpacity>
+  </View>
+);
+
 const HomeScreen = () => {
   const { user, isAuthenticated } = useAuthStore();
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<FeedTab>('offers');
   const [offers, setOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [services, setServices] = useState<Service[]>([]);
+  const [servicesLoading, setServicesLoading] = useState(true);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [isServiceModalVisible, setIsServiceModalVisible] = useState(false);
+  const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [isCongratsModalVisible, setIsCongratsModalVisible] = useState(false);
   const [isLoginModalVisible, setIsLoginModalVisible] = useState(false);
   
@@ -100,7 +139,15 @@ const HomeScreen = () => {
   const [alreadyApplied, setAlreadyApplied] = useState(false);
   const [hasResume, setHasResume] = useState(false);
 
-  const isEnterprise = user ? (user['custom:user_type'] === 'COMPANY_ADMIN' || user['custom:user_type'] === 'enterprise') : false;
+  const isEnterprise = user
+    ? (user['custom:user_type'] === 'COMPANY_ADMIN' ||
+       user['custom:user_type'] === 'SUPER_ADMIN' ||
+       user['custom:user_type'] === 'enterprise')
+    : false;
+
+  // Empresas SOLO ven el feed de servicios; candidatos ven ambos feeds.
+  const showTabSelector = !isEnterprise;
+  const effectiveTab: FeedTab = isEnterprise ? 'services' : activeTab;
 
   const fetchActiveOffers = async () => {
     setLoading(true);
@@ -132,9 +179,23 @@ const HomeScreen = () => {
     }
   };
 
+  const loadActiveServices = async () => {
+    setServicesLoading(true);
+    try {
+      const res = await fetchActiveServices();
+      setServices(res);
+    } catch (err) {
+      console.error('❌ Error al obtener servicios activos:', err);
+      setServices([]);
+    } finally {
+      setServicesLoading(false);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
       fetchActiveOffers();
+      loadActiveServices();
     }, [])
   );
 
@@ -167,9 +228,13 @@ const HomeScreen = () => {
     }
   };
 
+  const handleSelectService = (service: Service) => {
+    setSelectedService(service);
+    setIsServiceModalVisible(true);
+  };
+
   const handleApply = async () => {
     if (!selectedOffer || !user?.sub) return;
-
     setApplying(true);
     try {
       await apiFetch(`${APPLY_API_URL}/${user.sub}`, {
@@ -216,6 +281,12 @@ const HomeScreen = () => {
     offer.location.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const filteredServices = services.filter(service =>
+    service.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (service.category?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    service.municipality.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <GradientBackground>
       <SafeAreaView style={styles.safeArea}>
@@ -251,11 +322,18 @@ const HomeScreen = () => {
             </TouchableOpacity>
           </View>
 
+          {showTabSelector && (
+            <FeedSegmentedControl
+              activeTab={effectiveTab}
+              onTabChange={setActiveTab}
+            />
+          )}
+
           <View style={styles.searchContainer}>
             <Ionicons name="search-outline" size={20} color="#666666" style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Buscar empleo..."
+              placeholder={effectiveTab === 'offers' ? 'Buscar empleo...' : 'Buscar servicio...'}
               placeholderTextColor="#CCCCCC"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -264,21 +342,41 @@ const HomeScreen = () => {
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          <Text style={styles.sectionTitle}>Ofertas para ti</Text>
+          <Text style={styles.sectionTitle}>
+            {effectiveTab === 'offers' ? 'Ofertas para ti' : 'Servicios de talento local'}
+          </Text>
           <View style={styles.offersContainer}>
-            {loading ? (
+            {effectiveTab === 'offers' ? (
+              loading ? (
+                <ActivityIndicator size="large" color="#166907" style={{ marginTop: 50 }} />
+              ) : filteredOffers.length > 0 ? (
+                filteredOffers.map((offer) => (
+                  <OfferCard
+                    key={offer.id}
+                    offer={offer}
+                    onPress={handleSelectOffer}
+                  />
+                ))
+              ) : (
+                <Text style={styles.noResultsText}>
+                  {offers.length === 0 ? 'No hay ofertas activas disponibles.' : 'No se encontraron ofertas.'}
+                </Text>
+              )
+            ) : servicesLoading ? (
               <ActivityIndicator size="large" color="#166907" style={{ marginTop: 50 }} />
-            ) : filteredOffers.length > 0 ? (
-              filteredOffers.map((offer) => (
-                <OfferCard
-                  key={offer.id}
-                  offer={offer}
-                  onPress={handleSelectOffer}
+            ) : filteredServices.length > 0 ? (
+              filteredServices.map((service) => (
+                <ServiceCard
+                  key={service.id}
+                  service={service}
+                  onPress={handleSelectService}
                 />
               ))
             ) : (
               <Text style={styles.noResultsText}>
-                {offers.length === 0 ? 'No hay ofertas activas disponibles.' : 'No se encontraron ofertas.'}
+                {services.length === 0
+                  ? 'Aún no hay servicios disponibles.'
+                  : 'No se encontraron servicios.'}
               </Text>
             )}
           </View>
@@ -491,6 +589,13 @@ const HomeScreen = () => {
             </View>
           </View>
         </Modal>
+
+        {/* Modal de detalles del servicio (talent marketplace) */}
+        <ServiceDetailsModal
+          visible={isServiceModalVisible}
+          service={selectedService}
+          onClose={() => setIsServiceModalVisible(false)}
+        />
       </SafeAreaView>
     </GradientBackground>
   );
@@ -879,6 +984,34 @@ const styles = StyleSheet.create({
   },
   loginButtonIcon: {
     marginRight: 8,
+  },
+  segmentedContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#E8F5E9',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 12,
+  },
+  segmentButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  segmentButtonActive: {
+    backgroundColor: '#558B2F',
+  },
+  segmentText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#666666',
+    marginLeft: 6,
+  },
+  segmentTextActive: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
   },
 });
 

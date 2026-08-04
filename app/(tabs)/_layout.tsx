@@ -9,6 +9,8 @@ import { Provider as PaperProvider } from 'react-native-paper';
 // Importaciones de assets
 import HireIcon from '@/assets/icons/hire.json';
 import HireIconInactive from '@/assets/icons/hireInactive.json';
+import HistoryIcon from '@/assets/icons/history.json';
+import HistoryIconInactive from '@/assets/icons/historyInactive.json';
 import HomeIcon from '@/assets/icons/home.json';
 import HomeInactiveIcon from '@/assets/icons/homeInactive.json';
 import LoginIcon from '@/assets/icons/login.json';
@@ -172,6 +174,23 @@ const TabLayout = () => {
                             tabBarIcon: ({ focused, size }) => (
                                 <LottieView
                                     source={focused ? HireIcon : HireIconInactive}
+                                    style={{ width: size, height: size }}
+                                    autoPlay={focused}
+                                    loop={focused}
+                                />
+                            ),
+                        }}
+                    />
+
+                    {/* MIS SERVICIOS */}
+                    <Tabs.Screen
+                        name="my-services"
+                        options={{
+                            href: (isAuthenticated && isApplicant) ? '/my-services' : null,
+                            tabBarLabel: 'Mis servicios',
+                            tabBarIcon: ({ focused, size }) => (
+                                <LottieView
+                                    source={focused ? HistoryIcon : HistoryIconInactive}
                                     style={{ width: size, height: size }}
                                     autoPlay={focused}
                                     loop={focused}

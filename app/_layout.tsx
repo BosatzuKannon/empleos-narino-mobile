@@ -149,7 +149,7 @@ function MainNavigation() {
   const [hasRedirected, setHasRedirected] = useState(false);
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
 
-  const protectedRoutes = ['applications', 'offers', 'profile'];
+  const protectedRoutes = ['applications', 'offers', 'profile', 'my-services'];
   const currentTopSegment = segments[0];
   const isAuthRoute = currentTopSegment === 'auth';
   const isOnboardingScreen = currentTopSegment === 'onboarding';
