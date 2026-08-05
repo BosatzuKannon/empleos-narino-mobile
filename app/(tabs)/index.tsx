@@ -4,11 +4,13 @@ import { apiFetch } from '@/lib/apiClient';
 import GradientBackground from '@/components/GradientBackground';
 import ServiceCard from '@/components/ServiceCard';
 import ServiceDetailsModal from '@/components/ServiceDetailsModal';
+import CreateServiceFab from '@/components/CreateServiceFab';
 import { fetchActiveServices, type Service } from '@/lib/services';
 import { useAuthStore } from '@/store/authStore';
 import {
   getUserRole,
   isEnterpriseUser,
+  isCandidateUser,
 } from '@/lib/roleUtils';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -603,6 +605,10 @@ const HomeScreen = () => {
           service={selectedService}
           onClose={() => setIsServiceModalVisible(false)}
         />
+
+        {isCandidateUser(user) && effectiveTab === 'services' && (
+          <CreateServiceFab />
+        )}
       </SafeAreaView>
     </GradientBackground>
   );

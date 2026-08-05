@@ -8,6 +8,7 @@
 import logo from '@/assets/images/logo.png';
 import GradientBackground from '@/components/GradientBackground';
 import ServiceDetailsModal from '@/components/ServiceDetailsModal';
+import CreateServiceFab from '@/components/CreateServiceFab';
 import { useAppAlerts } from '@/hooks/useAppAlerts';
 import {
   fetchServicesByUser,
@@ -259,6 +260,8 @@ const MyServicesScreen = () => {
           service={selectedService}
           onClose={() => setIsModalVisible(false)}
         />
+
+        <CreateServiceFab />
       </SafeAreaView>
       {dialogElement}
     </GradientBackground>
