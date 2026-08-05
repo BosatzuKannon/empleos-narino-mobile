@@ -242,7 +242,7 @@ const CreateServiceScreen = () => {
         );
       }
 
-      const price = formData.price ? parseInt(formData.price, 10) : undefined;
+      const price = formData.price ? parseInt(formData.price, 10) : null;
 
       await createService({
         title: formData.title.trim(),
@@ -251,7 +251,7 @@ const CreateServiceScreen = () => {
         categoryId: formData.categoryId,
         price,
         priceType: formData.priceType,
-        imageUrl: imageUrl || undefined,
+        imageUrl: imageUrl || null,
       });
 
       showSuccess('¡Servicio publicado con éxito!');

@@ -53,9 +53,9 @@ export interface CreateServicePayload {
   title: string;
   description: string;
   municipality: string;
-  price?: number;
+  price?: number | null;
   priceType?: ServicePriceType;
-  imageUrl?: string;
+  imageUrl?: string | null;
 }
 
 // -----------------------------------------------------------------------------

@@ -1,16 +1,16 @@
 // =======================================================
 // CONFIGURACIÓN GLOBAL DE react-native-toast-message
 // Variantes: success, error, info, warning
-// Reglas UI: texto estrictamente alineado a la izquierda,
-// colores provenientes únicamente de constants/Colors.ts
+// Toast 100% custom: contraste garantizado (título oscuro sobre
+// fondo blanco), sin depender de los estilos internos de la
+// librería. El color semántico vive en el icono y el borde.
+// Colores desde constants/Colors.ts.
 // =======================================================
 
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import {
-  BaseToast,
-  type BaseToastProps,
   type ToastConfig,
   type ToastConfigParams,
 } from 'react-native-toast-message';
@@ -31,28 +31,39 @@ const VARIANT_STYLES: Record<string, VariantStyle> = {
   warning: { color: Colors.warning, background: Colors.warningBackground, icon: 'warning' },
 };
 
-interface AppToastProps extends BaseToastProps {
+interface AppToastProps {
   type?: string;
+  text1?: string;
+  text2?: string;
+  onPress?: () => void;
+  hide?: () => void;
 }
 
-function AppToast({ type = 'info', text1, text2, onPress }: AppToastProps) {
+function AppToast({ type = 'info', text1, text2, onPress, hide }: AppToastProps) {
   const variant = VARIANT_STYLES[type] ?? VARIANT_STYLES.info;
 
   return (
-    <BaseToast
-      onPress={onPress}
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress ?? hide}
       style={[styles.base, { borderLeftColor: variant.color }]}
-      contentContainerStyle={styles.content}
-      text1Style={[styles.text1, { color: variant.color }]}
-      text1NumberOfLines={2}
-      text2Style={styles.text2}
-      text2NumberOfLines={3}
-      renderLeadingIcon={() => (
-        <View style={[styles.iconBadge, { backgroundColor: variant.background }]}>
-          <Ionicons name={variant.icon} size={24} color={variant.color} />
-        </View>
-      )}
-    />
+    >
+      <View style={[styles.iconBadge, { backgroundColor: variant.background }]}>
+        <Ionicons name={variant.icon} size={24} color={variant.color} />
+      </View>
+      <View style={styles.content}>
+        {text1 ? (
+          <Text style={styles.text1} numberOfLines={2}>
+            {text1}
+          </Text>
+        ) : null}
+        {text2 ? (
+          <Text style={styles.text2} numberOfLines={3}>
+            {text2}
+          </Text>
+        ) : null}
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -69,15 +80,16 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     borderRadius: 14,
     borderLeftWidth: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: Colors.surface,
+    paddingVertical: 14,
+    paddingRight: 16,
     shadowColor: Colors.black,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.15,
     shadowRadius: 6,
     elevation: 5,
-  },
-  content: {
-    paddingHorizontal: 0,
   },
   iconBadge: {
     width: 42,
@@ -85,17 +97,23 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'center',
+    marginHorizontal: 12,
+  },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
   },
   text1: {
     fontSize: 15,
     fontWeight: 'bold',
     textAlign: 'left',
+    color: Colors.textPrimary,
   },
   text2: {
     fontSize: 13,
     color: Colors.textSecondary,
     textAlign: 'left',
     lineHeight: 18,
+    marginTop: 2,
   },
 });
