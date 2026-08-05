@@ -1,7 +1,27 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL || '';
-const REQUEST_TIMEOUT_MS = 30000;
+const REQUEST_TIMEOUT_MS = 60000;
+
+// Mapea errores crudos de red/abort a mensajes amigables en español.
+// Los errores de negocio (backend NestJS, ya en español) pasan sin cambios.
+export function friendlyErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    const name = error.name || '';
+    const message = error.message || '';
+    if (name === 'AbortError' || /abort/i.test(message)) {
+      return 'El servidor tardó demasiado en responder. Revisa tu conexión e intenta de nuevo.';
+    }
+    if (
+      error instanceof TypeError ||
+      /network request failed|fetch failed|net::/i.test(message)
+    ) {
+      return 'No pudimos conectar con el servidor. Revisa tu conexión a internet e intenta de nuevo.';
+    }
+    return message;
+  }
+  return 'Ocurrió un error inesperado. Intenta de nuevo.';
+}
 
 type RequestOptions = Omit<RequestInit, 'headers'> & {
   headers?: Record<string, string>;
@@ -75,12 +95,8 @@ export async function apiFetch<T = any>(
 
     return data as T;
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(
-        'El servidor tardó demasiado en responder. Intenta nuevamente.',
-      );
-    }
-    throw error;
+    // Nunca propagar errores crudos de red/abort al consumidor.
+    throw new Error(friendlyErrorMessage(error));
   } finally {
     clearTimeout(timeout);
   }

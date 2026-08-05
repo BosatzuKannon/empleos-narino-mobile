@@ -9,7 +9,7 @@
 import logo from '@/assets/images/logo.png';
 import GradientBackground from '@/components/GradientBackground';
 import { useAppAlerts } from '@/hooks/useAppAlerts';
-import { apiFetch } from '@/lib/apiClient';
+import { apiFetch, friendlyErrorMessage } from '@/lib/apiClient';
 import municipiosNarino from '@/lib/constants/municipiosNarino';
 import {
   createService,
@@ -20,6 +20,7 @@ import {
 } from '@/lib/services';
 import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
+import { File } from 'expo-file-system';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -39,6 +40,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 const PRESIGNED_URL_API = `${process.env.EXPO_PUBLIC_API_URL}/offers/generatePresignedUrl`;
 
 const PRICE_TYPE_OPTIONS: ServicePriceType[] = ['HOURLY', 'FIXED', 'TO_BE_AGREED'];
+
+// Sanitiza "$ 90.000" / "90,000" / " 90.000 " → "90000" (solo dígitos).
+const sanitizePrice = (value: string): string => value.replace(/\D/g, '');
+
+// Convierte el input de precio a número seguro; null si no hay dígitos.
+const parsePriceToNumber = (value: string): number | null => {
+  const digits = sanitizePrice(value);
+  if (!digits) return null;
+  const parsed = parseInt(digits, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 interface CreateServiceData {
   title: string;
@@ -110,7 +122,7 @@ const CreateServiceScreen = () => {
   };
 
   const handlePriceChange = (value: string) => {
-    const raw = value.replace(/\D/g, '');
+    const raw = sanitizePrice(value);
     setFormData((prev) => ({ ...prev, price: raw }));
     if (!raw) {
       setPriceDisplay('');
@@ -138,9 +150,9 @@ const CreateServiceScreen = () => {
       errors.municipality = 'Selecciona un municipio.';
     }
 
-    const parsedPrice = parseInt(data.price, 10) || 0;
+    const parsedPrice = parsePriceToNumber(data.price) ?? 0;
     if (data.priceType !== 'TO_BE_AGREED') {
-      if (!data.price.trim()) {
+      if (!sanitizePrice(data.price)) {
         errors.price = 'El precio es obligatorio.';
       } else if (parsedPrice <= 0) {
         errors.price = 'El precio debe ser mayor a cero.';
@@ -201,12 +213,14 @@ const CreateServiceScreen = () => {
       throw new Error('No se recibió la URL firmada del servidor.');
     }
 
-    const fileResponse = await fetch(fileUri);
-    const blob = await fileResponse.blob();
+    // Leer el archivo local con expo-file-system (soporte nativo) en vez
+    // de fetch(fileUri).blob(), que falla en RN con "Network request failed".
+    const file = new File(fileUri);
+    const bytes = await file.arrayBuffer();
 
     const uploadResponse = await fetch(signedUrl, {
       method: 'PUT',
-      body: blob,
+      body: bytes,
       headers: { 'Content-Type': fileType },
     });
 
@@ -231,18 +245,27 @@ const CreateServiceScreen = () => {
     setLoading(true);
 
     try {
-      let imageUrl: string | undefined;
+      let imageUrl: string | null = null;
 
       if (serviceImage) {
         setUploadingImage(true);
-        imageUrl = await uploadFileToS3(
-          serviceImage.uri,
-          serviceImage.fileName,
-          serviceImage.type,
-        );
+        try {
+          imageUrl = await uploadFileToS3(
+            serviceImage.uri,
+            serviceImage.fileName,
+            serviceImage.type,
+          );
+        } catch (uploadError) {
+          console.error('❌ Error subiendo la imagen:', uploadError);
+          showError(
+            'No se pudo subir la imagen. Revisa tu conexión e intenta de nuevo.',
+          );
+          return;
+        }
       }
 
-      const price = formData.price ? parseInt(formData.price, 10) : null;
+      // Sanitización estricta del precio: "$ 90.000" → 90000 (número).
+      const price = parsePriceToNumber(formData.price);
 
       await createService({
         title: formData.title.trim(),
@@ -258,9 +281,7 @@ const CreateServiceScreen = () => {
       router.back();
     } catch (error) {
       console.error('❌ Error creando el servicio:', error);
-      showError(
-        (error as any)?.message || 'No se pudo crear el servicio. Intenta nuevamente.',
-      );
+      showError(friendlyErrorMessage(error));
     } finally {
       setUploadingImage(false);
       setLoading(false);
