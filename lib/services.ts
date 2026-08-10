@@ -13,6 +13,8 @@ const API_BASE = process.env.EXPO_PUBLIC_API_URL || '';
 
 export type ServicePriceType = 'HOURLY' | 'FIXED' | 'TO_BE_AGREED';
 export type ServiceStatus = 'ACTIVE' | 'PAUSED';
+export type ServicePaymentStatus = 'PENDING' | 'APPROVED' | 'DECLINED';
+export type ServicePlanType = 'STANDARD' | 'FEATURED';
 
 export interface ServiceUser {
   id: string;
@@ -39,6 +41,9 @@ export interface Service {
   priceType: ServicePriceType;
   imageUrl: string | null;
   status: ServiceStatus;
+  paymentStatus: ServicePaymentStatus;
+  isFeatured: boolean;
+  expiresAt: string | null;
   viewsCount: number;
   createdAt: string;
   updatedAt: string;
@@ -56,6 +61,14 @@ export interface CreateServicePayload {
   price?: number | null;
   priceType?: ServicePriceType;
   imageUrl?: string | null;
+}
+
+export interface GenerateCheckoutResponse {
+  reference: string;
+  amountInCents: number;
+  currency: string;
+  signature: string;
+  checkoutUrl: string;
 }
 
 // -----------------------------------------------------------------------------
@@ -179,6 +192,19 @@ export async function createService(
     body: JSON.stringify(payload),
   });
   return (json?.service || json) as Service;
+}
+
+/** Genera el checkout de Wompi (pago pendiente) para un servicio publicado. */
+export async function generateServiceCheckout(
+  serviceId: string,
+  planType: ServicePlanType,
+): Promise<GenerateCheckoutResponse> {
+  const json = await apiFetch(`${API_BASE}/wompi/generate-checkout`, {
+    method: 'POST',
+    authenticated: true,
+    body: JSON.stringify({ serviceId, planType }),
+  });
+  return json as GenerateCheckoutResponse;
 }
 
 /** Cambia el estado (ACTIVE | PAUSED) de un servicio propio. */

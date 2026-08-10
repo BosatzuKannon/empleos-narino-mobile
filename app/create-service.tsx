@@ -14,12 +14,15 @@ import municipiosNarino from '@/lib/constants/municipiosNarino';
 import {
   createService,
   fetchServiceCategories,
+  generateServiceCheckout,
   PRICE_TYPE_LABELS,
   type ServiceCategory,
+  type ServicePlanType,
   type ServicePriceType,
 } from '@/lib/services';
 import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import { File } from 'expo-file-system';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -36,10 +39,31 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Toast from 'react-native-toast-message';
 
 const PRESIGNED_URL_API = `${process.env.EXPO_PUBLIC_API_URL}/offers/generatePresignedUrl`;
 
 const PRICE_TYPE_OPTIONS: ServicePriceType[] = ['HOURLY', 'FIXED', 'TO_BE_AGREED'];
+
+const PLAN_OPTIONS: {
+  type: ServicePlanType;
+  name: string;
+  price: string;
+  description: string;
+}[] = [
+  {
+    type: 'STANDARD',
+    name: 'Plan Estándar',
+    price: '$5.000',
+    description: 'Publicación por 1 mes',
+  },
+  {
+    type: 'FEATURED',
+    name: 'Plan Destacado',
+    price: '$8.000',
+    description: 'Publicación por 1 mes con mayor visibilidad',
+  },
+];
 
 // Sanitiza "$ 90.000" / "90,000" / " 90.000 " → "90000" (solo dígitos).
 const sanitizePrice = (value: string): string => value.replace(/\D/g, '');
@@ -72,7 +96,7 @@ interface CreateServiceErrors {
 const CreateServiceScreen = () => {
   const router = useRouter();
   const { user, isAuthenticated } = useAuthStore();
-  const { showSuccess, showError, dialogElement } = useAppAlerts();
+  const { showError, dialogElement } = useAppAlerts();
 
   const [loading, setLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -91,6 +115,8 @@ const CreateServiceScreen = () => {
     priceType: 'FIXED',
     description: '',
   });
+
+  const [planType, setPlanType] = useState<ServicePlanType>('STANDARD');
 
   useEffect(() => {
     if (!isAuthenticated || !user?.sub) {
@@ -267,7 +293,8 @@ const CreateServiceScreen = () => {
       // Sanitización estricta del precio: "$ 90.000" → 90000 (número).
       const price = parsePriceToNumber(formData.price);
 
-      await createService({
+      // 1. Crear el servicio (queda en payment_status PENDING).
+      const service = await createService({
         title: formData.title.trim(),
         description: formData.description.trim(),
         municipality: formData.municipality,
@@ -277,8 +304,19 @@ const CreateServiceScreen = () => {
         imageUrl: imageUrl || null,
       });
 
-      showSuccess('¡Servicio publicado con éxito!');
-      router.back();
+      // 2. Generar el checkout de Wompi y abrirlo para el pago.
+      const checkout = await generateServiceCheckout(service.id, planType);
+      await WebBrowser.openBrowserAsync(checkout.checkoutUrl);
+
+      // 3. El usuario cerró el navegador (pagó o canceló): el pago se
+      //    confirma por webhook. Mostramos confirmación y vamos a Mis Servicios.
+      Toast.show({
+        type: 'success',
+        text1: '¡Servicio creado!',
+        text2: 'Tu servicio fue creado correctamente. El pago se confirmará en unos minutos.',
+        position: 'bottom',
+      });
+      router.replace('/(tabs)/my-services');
     } catch (error) {
       console.error('❌ Error creando el servicio:', error);
       showError(friendlyErrorMessage(error));
@@ -438,6 +476,37 @@ const CreateServiceScreen = () => {
               editable={!loading}
             />
             {getErrorMessage('description')}
+
+            <Text style={styles.label}>Plan de publicación *</Text>
+            <View style={styles.planOptions}>
+              {PLAN_OPTIONS.map((plan) => {
+                const selected = planType === plan.type;
+                return (
+                  <TouchableOpacity
+                    key={plan.type}
+                    style={[styles.planCard, selected && styles.planCardSelected]}
+                    onPress={() => setPlanType(plan.type)}
+                    disabled={loading}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.planRow}>
+                      <Ionicons
+                        name={selected ? 'radio-button-on' : 'radio-button-off'}
+                        size={22}
+                        color={selected ? '#558B2F' : '#999999'}
+                      />
+                      <View style={styles.planInfo}>
+                        <Text style={[styles.planName, selected && styles.planNameSelected]}>
+                          {plan.name}
+                        </Text>
+                        <Text style={styles.planPrice}>{plan.price}</Text>
+                        <Text style={styles.planDescription}>{plan.description}</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
 
           <TouchableOpacity
@@ -550,6 +619,52 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 100,
     textAlignVertical: 'top',
+  },
+  planOptions: {
+    marginTop: 5,
+    gap: 10,
+  },
+  planCard: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    padding: 14,
+  },
+  planCardSelected: {
+    borderColor: '#558B2F',
+    backgroundColor: '#F1F8E9',
+  },
+  planRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  planInfo: {
+    flex: 1,
+    marginLeft: 10,
+    alignItems: 'flex-start',
+  },
+  planName: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#333333',
+    textAlign: 'left',
+  },
+  planNameSelected: {
+    color: '#558B2F',
+  },
+  planPrice: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#558B2F',
+    marginTop: 2,
+    textAlign: 'left',
+  },
+  planDescription: {
+    fontSize: 12,
+    color: '#666666',
+    marginTop: 2,
+    textAlign: 'left',
   },
   pickerContainer: {
     backgroundColor: '#f0f0f0',
