@@ -203,7 +203,12 @@ export async function generateServiceCheckout(
   const json = await apiFetch(`${API_BASE}/wompi/generate-checkout`, {
     method: 'POST',
     authenticated: true,
-    body: JSON.stringify({ serviceId, planType, redirectUrl }),
+    body: JSON.stringify({
+      entityType: 'SERVICE',
+      entityId: serviceId,
+      planType,
+      redirectUrl,
+    }),
   });
   return json as GenerateCheckoutResponse;
 }

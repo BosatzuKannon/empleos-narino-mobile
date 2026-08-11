@@ -5,6 +5,8 @@ import GradientBackground from '@/components/GradientBackground';
 import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
+import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -19,6 +21,30 @@ const nariñoMunicipalities = [
 // URLs de los servicios
 const PRESIGNED_URL_API = `${process.env.EXPO_PUBLIC_API_URL}/offers/generatePresignedUrl`;
 const CREATE_OFFER_API = `${process.env.EXPO_PUBLIC_API_URL}/offers/createOffer`;
+const GENERATE_CHECKOUT_API = `${process.env.EXPO_PUBLIC_API_URL}/wompi/generate-checkout`;
+const APP_REDIRECT_PROXY = 'https://empleos-narino-backend.onrender.com/wompi/app-redirect?link=';
+
+type OfferPlanType = 'STANDARD' | 'FEATURED';
+
+const PLAN_OPTIONS: {
+  type: OfferPlanType;
+  name: string;
+  price: string;
+  description: string;
+}[] = [
+  {
+    type: 'STANDARD',
+    name: 'Plan Estándar',
+    price: '$7.000',
+    description: 'Publicación por 1 mes',
+  },
+  {
+    type: 'FEATURED',
+    name: 'Plan Destacado',
+    price: '$10.000',
+    description: 'Publicación por 1 mes con mayor visibilidad',
+  },
+];
 
 interface OfferData {
   title: string;
@@ -61,6 +87,7 @@ const CreateOfferScreen = () => {
   const [offerImage, setOfferImage] = useState<any>(null); 
   const [receiptImage, setReceiptImage] = useState<any>(null); 
   const [salaryDisplay, setSalaryDisplay] = useState('');
+  const [planType, setPlanType] = useState<OfferPlanType>('STANDARD');
 
   // --- Funciones de Toast ---
   const showToast = (message: string, type: 'error' | 'success' = 'error') => {
@@ -232,16 +259,58 @@ const CreateOfferScreen = () => {
         cupos: parseInt(offerData.availablePositions) || 1,
       };
 
-      await apiFetch(`${CREATE_OFFER_API}/${user.sub}`, {
+      const json = await apiFetch(`${CREATE_OFFER_API}/${user.sub}`, {
         method: 'POST',
         authenticated: true,
         body: JSON.stringify(offerPayload),
       });
 
-      showToast('¡Oferta creada y en verificación!', 'success');
-      
-      // Redirigir al historial o a la pantalla anterior
-      router.back();
+      const offer = json?.offer || json;
+      if (!offer?.id) {
+        throw new Error('No se recibió la oferta creada.');
+      }
+
+      // 1. La oferta queda en estado PENDING_PAYMENT. 2. Generamos el checkout
+      // de Wompi y lo abrimos. Wompi valida que redirect-url sea http(s),
+      // así que apuntamos a un proxy del backend que responde con un 302 al
+      // deep link real de la app.
+      const proxyUrl =
+        APP_REDIRECT_PROXY +
+        encodeURIComponent(Linking.createURL('/(tabs)/offers'));
+      const checkout = await apiFetch(GENERATE_CHECKOUT_API, {
+        method: 'POST',
+        authenticated: true,
+        body: JSON.stringify({
+          entityType: 'OFFER',
+          entityId: offer.id,
+          planType,
+          redirectUrl: proxyUrl,
+        }),
+      });
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        checkout.checkoutUrl,
+        Linking.createURL('/(tabs)/offers'),
+      );
+
+      // El webhook confirma el pago; mientras tanto la oferta queda en
+      // "verificando pago" en Mis Vacantes con su badge.
+      if (result.type === 'success') {
+        Toast.show({
+          type: 'success',
+          text1: '¡Oferta creada!',
+          text2: 'Tu oferta fue creada correctamente. El pago se confirmará en unos minutos.',
+          position: 'bottom',
+        });
+      } else {
+        Toast.show({
+          type: 'info',
+          text1: 'Pago pendiente',
+          text2: 'Completa el pago desde Mis Vacantes para publicar tu oferta.',
+          position: 'bottom',
+        });
+      }
+      router.replace('/(tabs)/offers');
 
     } catch (error) {
       console.error('Error creando oferta:', error);
@@ -273,15 +342,38 @@ const CreateOfferScreen = () => {
             Completa los siguientes campos para publicar tu oferta de trabajo.
           </Text>
 
-          <View style={styles.paymentInfoContainer}>
-            <Ionicons name="alert-circle-outline" size={24} color="#558B2F" style={styles.infoIcon} />
-            <Text style={styles.paymentInfoText}>
-              <Text style={styles.boldText}>Costo de publicación:</Text> El costo por publicar es <Text style={styles.boldText}>TOTALMENTE GRATIS!!! durante todo el 2025.</Text> 
-              {'\n'}
-            </Text>
-          </View>
-          
           <View style={styles.formContainer}>
+            <Text style={styles.label}>Plan de publicación *</Text>
+            <View style={styles.planOptions}>
+              {PLAN_OPTIONS.map((plan) => {
+                const selected = planType === plan.type;
+                return (
+                  <TouchableOpacity
+                    key={plan.type}
+                    style={[styles.planCard, selected && styles.planCardSelected]}
+                    onPress={() => setPlanType(plan.type)}
+                    disabled={loading}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.planRow}>
+                      <Ionicons
+                        name={selected ? 'radio-button-on' : 'radio-button-off'}
+                        size={22}
+                        color={selected ? '#558B2F' : '#999999'}
+                      />
+                      <View style={styles.planInfo}>
+                        <Text style={[styles.planName, selected && styles.planNameSelected]}>
+                          {plan.name}
+                        </Text>
+                        <Text style={styles.planPrice}>{plan.price}</Text>
+                        <Text style={styles.planDescription}>{plan.description}</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             {/* Carga de Imagen de la Oferta */}
             <Text style={styles.label}>Imagen de la oferta (Opcional)</Text>
             <TouchableOpacity 
@@ -400,7 +492,7 @@ const CreateOfferScreen = () => {
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.saveButtonText}>Guardar y Publicar</Text>
+              <Text style={styles.saveButtonText}>Publicar Oferta</Text>
             )}
           </TouchableOpacity>
         </ScrollView>
@@ -519,6 +611,52 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     padding: 20,
     marginBottom: 20,
+  },
+  planOptions: {
+    marginTop: 5,
+    gap: 10,
+  },
+  planCard: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    padding: 14,
+  },
+  planCardSelected: {
+    borderColor: '#558B2F',
+    backgroundColor: '#F1F8E9',
+  },
+  planRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  planInfo: {
+    flex: 1,
+    marginLeft: 10,
+    alignItems: 'flex-start',
+  },
+  planName: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#333333',
+    textAlign: 'left',
+  },
+  planNameSelected: {
+    color: '#558B2F',
+  },
+  planPrice: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#558B2F',
+    marginTop: 2,
+    textAlign: 'left',
+  },
+  planDescription: {
+    fontSize: 12,
+    color: '#666666',
+    marginTop: 2,
+    textAlign: 'left',
   },
   infoIcon: {
     marginRight: 10,
