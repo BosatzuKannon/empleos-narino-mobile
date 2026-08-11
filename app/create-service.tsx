@@ -305,13 +305,20 @@ const CreateServiceScreen = () => {
         imageUrl: imageUrl || null,
       });
 
-      // 2. Generar el checkout de Wompi y abrirlo para el pago. El deep link
-      //    (EmpleosNarino://...) hace que openAuthSessionAsync cierre el
-      //    navegador y vuelva a la app cuando Wompi redirige.
+      // 2. Generar el checkout de Wompi y abrirlo para el pago. Wompi valida
+      //    que redirect-url sea una URL http(s) y rechaza esquemas propios
+      //    (exp://), así que pasamos un proxy del backend que responde con un
+      //    302 al deep link real de la app.
+      const deepLink = encodeURIComponent(
+        Linking.createURL('/(tabs)/my-services'),
+      );
+      const proxyUrl =
+        'https://empleos-narino-backend.onrender.com/wompi/app-redirect?link=' +
+        deepLink;
       const checkout = await generateServiceCheckout(
         service.id,
         planType,
-        Linking.createURL('/(tabs)/my-services'),
+        proxyUrl,
       );
       const result = await WebBrowser.openAuthSessionAsync(
         checkout.checkoutUrl,
