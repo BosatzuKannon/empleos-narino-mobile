@@ -22,6 +22,7 @@ import {
 } from '@/lib/services';
 import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
+import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { File } from 'expo-file-system';
 import { Picker } from '@react-native-picker/picker';
@@ -304,18 +305,36 @@ const CreateServiceScreen = () => {
         imageUrl: imageUrl || null,
       });
 
-      // 2. Generar el checkout de Wompi y abrirlo para el pago.
-      const checkout = await generateServiceCheckout(service.id, planType);
-      await WebBrowser.openBrowserAsync(checkout.checkoutUrl);
+      // 2. Generar el checkout de Wompi y abrirlo para el pago. El deep link
+      //    (EmpleosNarino://...) hace que openAuthSessionAsync cierre el
+      //    navegador y vuelva a la app cuando Wompi redirige.
+      const checkout = await generateServiceCheckout(
+        service.id,
+        planType,
+        Linking.createURL('/(tabs)/my-services'),
+      );
+      const result = await WebBrowser.openAuthSessionAsync(
+        checkout.checkoutUrl,
+        Linking.createURL('/(tabs)/my-services'),
+      );
 
-      // 3. El usuario cerró el navegador (pagó o canceló): el pago se
-      //    confirma por webhook. Mostramos confirmación y vamos a Mis Servicios.
-      Toast.show({
-        type: 'success',
-        text1: '¡Servicio creado!',
-        text2: 'Tu servicio fue creado correctamente. El pago se confirmará en unos minutos.',
-        position: 'bottom',
-      });
+      // 3. El usuario pagó (webhook confirma) o canceló; el estado PENDING
+      //    queda visible en Mis Servicios con su badge.
+      if (result.type === 'success') {
+        Toast.show({
+          type: 'success',
+          text1: '¡Servicio creado!',
+          text2: 'Tu servicio fue creado correctamente. El pago se confirmará en unos minutos.',
+          position: 'bottom',
+        });
+      } else {
+        Toast.show({
+          type: 'info',
+          text1: 'Pago pendiente',
+          text2: 'Completa el pago desde Mis Servicios para publicar tu servicio.',
+          position: 'bottom',
+        });
+      }
       router.replace('/(tabs)/my-services');
     } catch (error) {
       console.error('❌ Error creando el servicio:', error);
