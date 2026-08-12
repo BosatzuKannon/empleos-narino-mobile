@@ -51,14 +51,26 @@ const MyServiceCard = ({
   onPress: (service: Service) => void;
   onToggle: (service: Service) => void;
 }) => (
-  <TouchableOpacity style={styles.serviceCard} onPress={() => onPress(service)}>
-    <View style={styles.cardHeader}>
-      <Text style={styles.jobTitle} numberOfLines={2}>
-        {service.title}
-      </Text>
-      <Text style={[styles.statusText, getStatusStyle(service.status)]}>
-        {STATUS_LABELS[service.status]}
-      </Text>
+  <TouchableOpacity style={styles.serviceCard} onPress={() => onPress(service)} activeOpacity={0.7}>
+    <View style={styles.cardRow}>
+      <View style={styles.cardIconCircle}>
+        <Ionicons name="construct-outline" size={20} color="#558B2F" />
+      </View>
+      <View style={styles.cardBody}>
+        <View style={styles.titleRow}>
+          <Text style={styles.jobTitle} numberOfLines={1}>
+            {service.title}
+          </Text>
+          <Text style={[styles.statusText, getStatusStyle(service.status)]}>
+            {STATUS_LABELS[service.status]}
+          </Text>
+        </View>
+        <Text style={styles.categoryName} numberOfLines={1}>
+          {service.category?.name || 'Servicio'}
+        </Text>
+        <Text style={styles.cardDescription} numberOfLines={2}>{service.description}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color="#CCCCCC" />
     </View>
 
     {service.paymentStatus === 'PENDING' && (
@@ -68,24 +80,20 @@ const MyServiceCard = ({
       </View>
     )}
 
-    <Text style={styles.categoryName}>
-      {service.category?.name || 'Servicio'}
-    </Text>
-
-    <View style={styles.detailsContainer}>
-      <View style={styles.detailItem}>
-        <Ionicons name="location-outline" size={14} color="#666666" />
-        <Text style={styles.detailText}>{service.municipality}</Text>
+    <View style={styles.metaRow}>
+      <View style={styles.metaChip}>
+        <Ionicons name="location-outline" size={12} color="#666666" />
+        <Text style={styles.metaChipText}>{service.municipality}</Text>
       </View>
-      <View style={styles.detailItem}>
-        <Ionicons name="cash-outline" size={14} color="#558B2F" />
-        <Text style={[styles.detailText, styles.priceText]}>
+      <View style={[styles.metaChip, styles.metaChipPrice]}>
+        <Ionicons name="cash-outline" size={12} color="#558B2F" />
+        <Text style={[styles.metaChipText, styles.metaChipTextPrice]}>
           {formatServicePrice(service)}
         </Text>
       </View>
-      <View style={styles.detailItem}>
-        <Ionicons name="eye-outline" size={14} color="#666666" />
-        <Text style={styles.detailText}>{service.viewsCount} vistas</Text>
+      <View style={styles.metaChip}>
+        <Ionicons name="eye-outline" size={12} color="#666666" />
+        <Text style={styles.metaChipText}>{service.viewsCount} vistas</Text>
       </View>
     </View>
 
@@ -319,33 +327,51 @@ const styles = StyleSheet.create({
   },
   serviceCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 15,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  cardHeader: {
+  cardRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cardIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E8F5E9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  cardBody: {
+    flex: 1,
+    marginRight: 8,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
   },
   jobTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#333333',
     flex: 1,
-    paddingRight: 10,
+    paddingRight: 8,
   },
   statusText: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: 'bold',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
   statusActive: {
     backgroundColor: '#e8f5e9',
@@ -363,39 +389,51 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F0C23B',
     borderRadius: 8,
-    paddingVertical: 8,
+    paddingVertical: 6,
     paddingHorizontal: 12,
     marginTop: 10,
   },
   pendingPaymentText: {
     marginLeft: 8,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 'bold',
     color: '#8A5A00',
   },
   categoryName: {
-    fontSize: 14,
-    color: '#666666',
-    marginTop: 4,
-    marginBottom: 5,
-  },
-  detailsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 5,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 15,
-    marginBottom: 5,
-  },
-  detailText: {
-    marginLeft: 5,
     fontSize: 12,
     color: '#666666',
+    marginTop: 2,
   },
-  priceText: {
+  cardDescription: {
+    fontSize: 12,
+    color: '#888888',
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  metaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginRight: 6,
+    marginBottom: 4,
+  },
+  metaChipText: {
+    marginLeft: 4,
+    fontSize: 11,
+    color: '#666666',
+  },
+  metaChipPrice: {
+    backgroundColor: '#F1F8E9',
+  },
+  metaChipTextPrice: {
     color: '#558B2F',
     fontWeight: 'bold',
   },

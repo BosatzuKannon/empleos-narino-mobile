@@ -57,6 +57,7 @@ async function applyAuthResult(data: any): Promise<{ success: boolean; error?: s
                 'custom:user_type': data.user.role || '',
                 phone_number: data.user.telefono || '',
                 companyName: data.user.companyName || '',
+                avatarUrl: data.user.avatarUrl || '',
             };
             await AsyncStorage.setItem('userData', JSON.stringify(user));
             useAuthStore.setState({ user });

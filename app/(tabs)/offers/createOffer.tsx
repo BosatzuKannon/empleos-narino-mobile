@@ -484,6 +484,13 @@ const CreateOfferScreen = () => {
             {getErrorMessage('availablePositions')}
           </View>
 
+          <View style={styles.disclaimerContainer}>
+            <Ionicons name="information-circle-outline" size={16} color="#EF6C00" />
+            <Text style={styles.disclaimerText}>
+              Nota: el pago equivale a 1 mes (30 días) de publicación activa en la plataforma. Pasado este periodo, la publicación se desactivará automáticamente.
+            </Text>
+          </View>
+
           <TouchableOpacity 
             style={[styles.saveButton, loading && styles.saveButtonDisabled]} 
             onPress={handleSave}
@@ -531,7 +538,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingVertical: 20,
+    paddingTop: 20,
+    paddingBottom: 100,
   },
   titleText: {
     fontSize: 24,
@@ -710,6 +718,22 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  disclaimerContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FFF8E1',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  disclaimerText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#8A5A00',
   },
 });
 

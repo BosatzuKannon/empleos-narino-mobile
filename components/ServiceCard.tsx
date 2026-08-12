@@ -1,7 +1,5 @@
 // =======================================================
-// ServiceCard — Tarjeta de servicio del talent marketplace
-// Replica exacta de estilos/sombras/border-radius de las
-// tarjetas de ofertas existentes (app/(tabs)/index.tsx).
+// ServiceCard — Tarjeta compacta de servicio del talent marketplace
 // =======================================================
 
 import { Ionicons } from '@expo/vector-icons';
@@ -12,7 +10,6 @@ import {
   formatServicePrice,
   getServiceProviderName,
   PRICE_TYPE_ICONS,
-  PRICE_TYPE_LABELS,
   type Service,
 } from '@/lib/services';
 
@@ -34,53 +31,38 @@ const ServiceCard = ({ service, onPress }: ServiceCardProps) => {
   const priceTypeIcon = PRICE_TYPE_ICONS[service.priceType];
 
   return (
-    <TouchableOpacity style={styles.serviceCard} onPress={() => onPress(service)}>
-      <View style={styles.imageContainer}>
+    <TouchableOpacity style={styles.serviceCard} onPress={() => onPress(service)} activeOpacity={0.7}>
+      <View style={styles.cardRow}>
         {imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={styles.serviceImage} resizeMode="cover" />
+          <Image source={{ uri: imageUrl }} style={styles.cardThumb} resizeMode="cover" />
         ) : (
-          <View style={styles.placeholderContainer}>
-            <Ionicons name="briefcase-outline" size={44} color="#AED581" />
-            <Text style={styles.placeholderText}>{categoryName}</Text>
+          <View style={styles.cardIconCircle}>
+            <Ionicons name="construct-outline" size={20} color="#558B2F" />
           </View>
         )}
+        <View style={styles.cardBody}>
+          <Text style={styles.jobTitle} numberOfLines={1}>{service.title}</Text>
+          <Text style={styles.companyName} numberOfLines={1}>{providerName}</Text>
+          <Text style={styles.cardDescription} numberOfLines={2}>{service.description}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color="#CCCCCC" />
       </View>
-
-      <View style={styles.cardHeader}>
-        <Text style={styles.jobTitle} numberOfLines={2}>
-          {service.title}
-        </Text>
-        <Ionicons name="bookmark-outline" size={24} color="#666666" />
-      </View>
-
-      <Text style={styles.companyName} numberOfLines={1}>
-        {providerName}
-      </Text>
-
-      <View style={styles.detailsContainer}>
-        <View style={styles.detailItem}>
-          <Ionicons name="location-outline" size={14} color="#666666" />
-          <Text style={styles.detailText}>{service.municipality}</Text>
+      <View style={styles.metaRow}>
+        <View style={styles.metaChip}>
+          <Ionicons name="location-outline" size={12} color="#666666" />
+          <Text style={styles.metaChipText}>{service.municipality}</Text>
         </View>
-        <View style={styles.detailItem}>
-          <Ionicons name="pricetag-outline" size={14} color="#666666" />
-          <Text style={styles.detailText}>{categoryName}</Text>
+        <View style={styles.metaChip}>
+          <Ionicons name="pricetag-outline" size={12} color="#666666" />
+          <Text style={styles.metaChipText}>{categoryName}</Text>
         </View>
-        <View style={styles.detailItem}>
-          <Ionicons name={priceTypeIcon as any} size={14} color="#666666" />
-          <Text style={styles.detailText}>{PRICE_TYPE_LABELS[service.priceType]}</Text>
-        </View>
-        <View style={styles.detailItem}>
-          <Ionicons name="cash-outline" size={14} color="#558B2F" />
-          <Text style={[styles.detailText, styles.priceText]}>
+        <View style={[styles.metaChip, styles.metaChipPrice]}>
+          <Ionicons name={priceTypeIcon as any} size={12} color="#558B2F" />
+          <Text style={[styles.metaChipText, styles.metaChipTextPrice]}>
             {formatServicePrice(service)}
           </Text>
         </View>
       </View>
-
-      <TouchableOpacity style={styles.detailsButton} onPress={() => onPress(service)}>
-        <Text style={styles.detailsButtonText}>Ver detalles</Text>
-      </TouchableOpacity>
     </TouchableOpacity>
   );
 };
@@ -88,84 +70,79 @@ const ServiceCard = ({ service, onPress }: ServiceCardProps) => {
 const styles = StyleSheet.create({
   serviceCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 15,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  imageContainer: {
-    width: '100%',
-    height: 150,
-    borderRadius: 15,
-    marginBottom: 15,
-    overflow: 'hidden',
+  cardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  serviceImage: {
-    width: '100%',
-    height: 150,
+  cardThumb: {
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+    marginRight: 12,
   },
-  placeholderContainer: {
-    flex: 1,
+  cardIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#E8F5E9',
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
   },
-  placeholderText: {
-    marginTop: 8,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#558B2F',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  cardBody: {
+    flex: 1,
+    marginRight: 8,
   },
   jobTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#333333',
-    flexShrink: 1,
-    paddingRight: 10,
   },
   companyName: {
-    fontSize: 14,
-    color: '#666666',
-    marginBottom: 5,
-  },
-  detailsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 5,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 15,
-    marginBottom: 5,
-  },
-  detailText: {
-    marginLeft: 5,
     fontSize: 12,
     color: '#666666',
+    marginTop: 2,
   },
-  priceText: {
-    color: '#558B2F',
-    fontWeight: 'bold',
+  cardDescription: {
+    fontSize: 12,
+    color: '#888888',
+    marginTop: 4,
+    lineHeight: 16,
   },
-  detailsButton: {
-    marginTop: 15,
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    backgroundColor: '#E8F5E9',
-    borderRadius: 10,
-    alignSelf: 'flex-start',
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
   },
-  detailsButtonText: {
+  metaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginRight: 6,
+    marginBottom: 4,
+  },
+  metaChipText: {
+    marginLeft: 4,
+    fontSize: 11,
+    color: '#666666',
+  },
+  metaChipPrice: {
+    backgroundColor: '#F1F8E9',
+  },
+  metaChipTextPrice: {
     color: '#558B2F',
     fontWeight: 'bold',
   },

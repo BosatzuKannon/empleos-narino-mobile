@@ -99,31 +99,37 @@ const getImageUrl = (imagePath: string) => {
 };
 
 const ApplicationCard = ({ application, onPress }: { application: any, onPress: (app: any) => void }) => (
-  <TouchableOpacity style={styles.applicationCard} onPress={() => onPress(application)}>
-    <View style={styles.cardHeader}>
-      <Text style={styles.jobTitle}>{application.offer.titulo || 'Sin título'}</Text>
-      <Text style={[styles.statusText, getStatusStyle(application.status)]}>
-        {formatStatusLabel(application.status)}
-      </Text>
+  <TouchableOpacity style={styles.applicationCard} onPress={() => onPress(application)} activeOpacity={0.7}>
+    <View style={styles.cardRow}>
+      <View style={styles.cardIconCircle}>
+        <Ionicons name="documents-outline" size={20} color="#558B2F" />
+      </View>
+      <View style={styles.cardBody}>
+        <View style={styles.titleRow}>
+          <Text style={styles.jobTitle} numberOfLines={1}>{application.offer.titulo || 'Sin título'}</Text>
+          <Text style={[styles.statusText, getStatusStyle(application.status)]}>
+            {formatStatusLabel(application.status)}
+          </Text>
+        </View>
+        <Text style={styles.companyName} numberOfLines={1}>{application.offer.empresa || 'Empresa no especificada'}</Text>
+        <Text style={styles.cardDescription} numberOfLines={2}>{application.descripcion}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color="#CCCCCC" />
     </View>
-    <Text style={styles.companyName}>{application.offer.empresa || 'Empresa no especificada'}</Text>
-    <View style={styles.detailsContainer}>
-      <View style={styles.detailItem}>
-        <Ionicons name="location-outline" size={14} color="#666666" />
-        <Text style={styles.detailText}>{application.offer.municipio || 'Ubicación no especificada'}</Text>
+    <View style={styles.metaRow}>
+      <View style={styles.metaChip}>
+        <Ionicons name="location-outline" size={12} color="#666666" />
+        <Text style={styles.metaChipText}>{application.offer.municipio || 'Ubicación no especificada'}</Text>
       </View>
-      <View style={styles.detailItem}>
-        <Ionicons name="briefcase-outline" size={14} color="#666666" />
-        <Text style={styles.detailText}>{application.offer.tipo_trabajo || 'Tipo no especificado'}</Text>
+      <View style={styles.metaChip}>
+        <Ionicons name="briefcase-outline" size={12} color="#666666" />
+        <Text style={styles.metaChipText}>{application.offer.tipo_trabajo || 'Tipo no especificado'}</Text>
       </View>
-      <View style={styles.detailItem}>
-        <Ionicons name="cash-outline" size={14} color="#666666" />
-        <Text style={styles.detailText}>{formatSalary(application.offer.salario)}</Text>
+      <View style={[styles.metaChip, styles.metaChipPrice]}>
+        <Ionicons name="cash-outline" size={12} color="#558B2F" />
+        <Text style={[styles.metaChipText, styles.metaChipTextPrice]}>{formatSalary(application.offer.salario)}</Text>
       </View>
     </View>
-    <TouchableOpacity style={styles.detailsButton} onPress={() => onPress(application)}>
-      <Text style={styles.detailsButtonText}>Ver detalles</Text>
-    </TouchableOpacity>
   </TouchableOpacity>
 );
 
@@ -550,66 +556,89 @@ const styles = StyleSheet.create({
   },
   applicationCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 15,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  cardHeader: {
+  cardRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
   },
+  cardIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E8F5E9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  cardBody: {
+    flex: 1,
+    marginRight: 8,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   jobTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#333333',
     flexShrink: 1,
-    paddingRight: 10,
+    paddingRight: 8,
   },
   companyName: {
-    fontSize: 14,
-    color: '#666666',
-    marginBottom: 5,
-  },
-  detailsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 5,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 15,
-    marginBottom: 5,
-  },
-  detailText: {
-    marginLeft: 5,
     fontSize: 12,
     color: '#666666',
+    marginTop: 2,
   },
-  detailsButton: {
-    marginTop: 15,
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    backgroundColor: '#E8F5E9',
-    borderRadius: 10,
-    alignSelf: 'flex-start',
+  cardDescription: {
+    fontSize: 12,
+    color: '#888888',
+    marginTop: 4,
+    lineHeight: 16,
   },
-  detailsButtonText: {
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  metaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginRight: 6,
+    marginBottom: 4,
+  },
+  metaChipText: {
+    marginLeft: 4,
+    fontSize: 11,
+    color: '#666666',
+  },
+  metaChipPrice: {
+    backgroundColor: '#F1F8E9',
+  },
+  metaChipTextPrice: {
     color: '#558B2F',
     fontWeight: 'bold',
   },
   statusText: {
-    fontSize: 14,
+    fontSize: 10,
     fontWeight: 'bold',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
   statusApplied: {
     backgroundColor: '#fffbe6',
