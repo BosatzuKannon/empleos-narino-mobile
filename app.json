@@ -2,7 +2,7 @@
   "expo": {
     "name": "Empleos Nariño",
     "slug": "empleos-narino",
-    "version": "2.1.4",
+    "version": "2.2.1",
     "orientation": "default",
     "icon": "./assets/images/logo2.png",
     "scheme": "empleosnarino",
@@ -22,7 +22,7 @@
         "barStyle": "dark-content"
       },
       "package": "com.bosatzu.empleosnarino",
-      "versionCode": 30,
+      "versionCode": 31,
       "googleServicesFile": "./google-services.json",
       "splash": {
         "backgroundColor": "#ffffff",
@@ -63,7 +63,8 @@
             "extraProguardRules": "-keep class expo.modules.notifications.** { *; }\n-keepnames class expo.modules.notifications.** { *; }"
           }
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": true

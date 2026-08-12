@@ -141,7 +141,7 @@ function useOnboardingStatus() {
 }
 
 function MainNavigation() {
-  const { isAuthenticated, isLoading, isOutdated, outdatedMessage } = useAuthStore(); 
+  const { isAuthenticated, isLoading, isOutdated, outdatedMessage, user } = useAuthStore(); 
   const { hasSeenOnboarding, isReady: isOnboardingReady } = useOnboardingStatus();
   const router = useRouter(); 
   const segments = useSegments(); 
@@ -150,10 +150,15 @@ function MainNavigation() {
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
 
   const protectedRoutes = ['applications', 'offers', 'profile', 'my-services'];
-  const currentTopSegment = segments[0];
+  const currentTopSegment = (segments[0] ?? '') as string;
   const isAuthRoute = currentTopSegment === 'auth';
   const isOnboardingScreen = currentTopSegment === 'onboarding';
+  const isOnboardingRoleScreen = currentTopSegment === 'onboarding-role';
   const isTryingToAccessProtected = protectedRoutes.includes(segments[1] ?? ''); 
+
+  // Usuarios creados vía Google aún no eligieron rol (PENDING) -> forzar onboarding de rol
+  const userRole = user?.['custom:user_type'];
+  const hasPendingRole = !!isAuthenticated && userRole === 'PENDING';
 
   // Deep linking: escucha el toque en una notificación y guarda la ruta destino
   useEffect(() => {
@@ -191,6 +196,13 @@ function MainNavigation() {
       return;
     }
 
+    // Usuario autenticado con rol PENDING (Google) -> forzar selección de rol
+    if (hasPendingRole && !isOnboardingRoleScreen) {
+      setHasRedirected(true);
+      router.replace('/onboarding-role' as Href);
+      return;
+    }
+
     // Si ya vio el onboarding pero no está autenticado y trata de acceder a rutas protegidas
     if (hasSeenOnboarding && !isAuthenticated && isTryingToAccessProtected) {
       setHasRedirected(true);
@@ -214,13 +226,15 @@ function MainNavigation() {
     hasSeenOnboarding, 
     isOnboardingReady, 
     segments,
-    hasRedirected // Agregar hasRedirected como dependencia
+    hasRedirected, // Agregar hasRedirected como dependencia
+    hasPendingRole,
+    isOnboardingRoleScreen
   ]);
 
   // Reset hasRedirected cuando cambian las condiciones principales
   useEffect(() => {
     setHasRedirected(false);
-  }, [isAuthenticated, hasSeenOnboarding]);
+  }, [isAuthenticated, hasSeenOnboarding, user]);
 
   if (isLoading || !isOnboardingReady) {
     return <LoadingView />; 

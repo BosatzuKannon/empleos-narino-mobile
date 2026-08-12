@@ -1,6 +1,7 @@
 import GradientBackground from '@/components/GradientBackground';
 import { configureNotifications, registerPushToken } from '@/lib/pushNotifications';
 import { useAuthStore } from '@/store/authStore';
+import { FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Image, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -15,7 +16,7 @@ import loginGraphic from '@/assets/images/login_graphic.png';
 
 const LoginScreen = () => {
   const router = useRouter();
-  const { login } = useAuthStore(); 
+  const { login, googleSignIn } = useAuthStore(); 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [secureTextEntry, setSecureTextEntry] = useState(true);
@@ -59,6 +60,27 @@ const LoginScreen = () => {
       }
     } catch (error) {
       console.error('Error en login:', error);
+      showToast('No se pudo conectar con el servidor.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    try {
+      const result = await googleSignIn();
+
+      if (result.success) {
+        showSuccessToast('Inicio de sesión exitoso.');
+        await configureNotifications();
+        await registerPushToken();
+        router.replace('/(tabs)');
+      } else {
+        showToast(result.error || 'No se pudo iniciar sesión con Google.');
+      }
+    } catch (error) {
+      console.error('Error en Google Sign-In:', error);
       showToast('No se pudo conectar con el servidor.');
     } finally {
       setLoading(false);
@@ -134,6 +156,22 @@ const LoginScreen = () => {
             {loading ? 'Ingresando...' : 'Iniciar sesión'}
           </Button>
 
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>o</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <TouchableOpacity
+            style={styles.googleButton}
+            onPress={handleGoogleSignIn}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            <FontAwesome name="google" size={20} color="#DB4437" />
+            <Text style={styles.googleButtonText}>Continuar con Google</Text>
+          </TouchableOpacity>
+
           <View style={styles.footer}>
             <Text style={styles.footerText}>
               ¿No tienes una cuenta?{' '}
@@ -208,6 +246,38 @@ const styles = StyleSheet.create({
   forgotPassword: { color: '#558B2F', fontWeight: 'bold', textAlign: 'right' },
   button: { marginTop: 10, marginBottom: 20, backgroundColor: '#076a0d', borderRadius: 8 }, 
   buttonLabel: { paddingVertical: 4, fontSize: 16, color: '#fff', fontWeight: 'bold' },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#999',
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    color: '#666',
+    fontSize: 14,
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#dadce0',
+    borderRadius: 8,
+    paddingVertical: 12,
+    marginBottom: 20,
+  },
+  googleButtonText: {
+    color: '#333',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   footer: { marginTop: 40, alignItems: 'center' }, 
   footerText: { color: '#333', fontSize: 14 },
   linkText: { color: '#558B2F', fontWeight: 'bold' },

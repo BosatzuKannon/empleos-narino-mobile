@@ -3,6 +3,7 @@ import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { useAuthStore } from '@/store/authStore';
+import { FontAwesome } from '@expo/vector-icons';
 import {
     ActivityIndicator,
     Modal,
@@ -16,6 +17,7 @@ import {
 import { Button, IconButton, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
+import { configureNotifications, registerPushToken } from '@/lib/pushNotifications';
 
 const citiesOfNarino = [
     'San Juan de Pasto', 'Ipiales', 'Tumaco', 'Túquerres', 'La Unión', 'Samaniego', 'Chachagüí', 'Consacá', 'El Tambo', 'Funes', 'Guaitarilla', 'Iles', 'Imués', 'La Florida', 'Linares', 'Nariño', 'Potosí', 'Yacuanquer', 'Ancuya', 'Arboleda', 'Barbacoas', 'Belen', 'Buesaco', 'Cumbitara', 'El Peñol', 'El Rosario', 'El Tablón de Gómez', 'Francisco Pizarro', 'Génova', 'Guachucal', 'La Cruz', 'Leiva', 'Linares', 'Los Andes', 'Mallama', 'Mosquera', 'Olaya Herrera', 'Puerres', 'Ricaurte', 'Sandoná', 'Santa Bárbara', 'Sapuyes', 'Taminango', 'Tangua'
@@ -53,7 +55,7 @@ const PasswordRequirements = ({ password }) => {
 
 const RegisterScreen = () => {
     const router = useRouter();
-    const { signUp } = useAuthStore();
+    const { signUp, googleSignIn } = useAuthStore();
     
     // Estado para el tipo de usuario ('applicant' o 'enterprise')
     const [userType, setUserType] = useState<'applicant' | 'enterprise'>('applicant');
@@ -189,6 +191,27 @@ const RegisterScreen = () => {
         } catch (error) {
             console.error('Error:', error);
             showToast('Error de conexión.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleGoogleSignIn = async () => {
+        setLoading(true);
+        try {
+            const result = await googleSignIn();
+
+            if (result.success) {
+                showSuccessToast('Inicio de sesión exitoso.');
+                await configureNotifications();
+                await registerPushToken();
+                router.replace('/(tabs)');
+            } else {
+                showToast(result.error || 'No se pudo iniciar sesión con Google.');
+            }
+        } catch (error) {
+            console.error('Error en Google Sign-In:', error);
+            showToast('No se pudo conectar con el servidor.');
         } finally {
             setLoading(false);
         }
@@ -376,6 +399,22 @@ const RegisterScreen = () => {
                         {loading ? 'Registrando...' : 'Registrarme'}
                     </Button>
 
+                    <View style={styles.dividerRow}>
+                        <View style={styles.dividerLine} />
+                        <Text style={styles.dividerText}>o</Text>
+                        <View style={styles.dividerLine} />
+                    </View>
+
+                    <TouchableOpacity
+                        style={styles.googleButton}
+                        onPress={handleGoogleSignIn}
+                        disabled={loading}
+                        activeOpacity={0.8}
+                    >
+                        <FontAwesome name="google" size={20} color="#DB4437" />
+                        <Text style={styles.googleButtonText}>Continuar con Google</Text>
+                    </TouchableOpacity>
+
                     <View style={styles.footer}>
                         <Text style={styles.footerText}>
                             ¿Ya tienes una cuenta?{' '}
@@ -508,6 +547,38 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#fff',
         fontWeight: 'bold',
+    },
+    dividerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginVertical: 10,
+    },
+    dividerLine: {
+        flex: 1,
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: '#999',
+    },
+    dividerText: {
+        marginHorizontal: 12,
+        color: '#666',
+        fontSize: 14,
+    },
+    googleButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: '#dadce0',
+        borderRadius: 8,
+        paddingVertical: 12,
+        marginBottom: 10,
+    },
+    googleButtonText: {
+        color: '#333',
+        fontSize: 16,
+        fontWeight: '600',
     },
     footer: {
         marginTop: 20,

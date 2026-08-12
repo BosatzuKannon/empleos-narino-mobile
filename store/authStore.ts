@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import Constants from 'expo-constants';
 import { jwtDecode } from 'jwt-decode';
 import { create } from 'zustand';
@@ -6,6 +7,7 @@ import { create } from 'zustand';
 const API_BASE = process.env.EXPO_PUBLIC_API_URL;
 const APP_VERSION_API_URL = `${API_BASE}/settings/app-version`;
 const LOGIN_API_URL = `${API_BASE}/auth/signin`;
+const GOOGLE_SIGNIN_API_URL = `${API_BASE}/auth/google`;
 
 export interface User {
     sub: string;
@@ -28,10 +30,71 @@ interface AuthState {
     appStatusMessage: string;
     appStatusType: number;
     login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+    googleSignIn: () => Promise<{ success: boolean; error?: string }>;
     signUp: (userData: any) => Promise<{ success: boolean; error?: string }>;
+    setRole: (role: 'CANDIDATE' | 'COMPANY_ADMIN') => Promise<{ success: boolean; error?: string }>;
     signOut: () => Promise<void>;
     checkAppVersion: () => Promise<void>;
     initializeAuth: () => Promise<void>;
+}
+
+// Persiste el resultado de autenticación del backend (token + usuario) en
+// AsyncStorage y actualiza el store. Lo comparten login y Google Sign-In.
+async function applyAuthResult(data: any): Promise<{ success: boolean; error?: string }> {
+    if (data && data.authenticationResult) {
+        const { AccessToken } = data.authenticationResult;
+
+        await AsyncStorage.setItem('userToken', AccessToken);
+        await AsyncStorage.setItem('accessToken', AccessToken);
+
+        // Prefer the user object from the backend response (it includes the role)
+        if (data.user) {
+            const user: User = {
+                sub: data.user.id || '',
+                email: data.user.email || '',
+                given_name: data.user.nombre || '',
+                family_name: data.user.apellido || '',
+                'custom:user_type': data.user.role || '',
+                phone_number: data.user.telefono || '',
+                companyName: data.user.companyName || '',
+            };
+            await AsyncStorage.setItem('userData', JSON.stringify(user));
+            useAuthStore.setState({ user });
+        } else {
+            // Fallback: decode the JWT (works for users with role in user_metadata)
+            let decoded: Record<string, any> | null = null;
+            try {
+                decoded = jwtDecode<Record<string, any>>(AccessToken);
+                await AsyncStorage.setItem('decodedToken', JSON.stringify(decoded));
+            } catch (err) {
+                console.error('Error al decodificar el token:', err);
+            }
+
+            if (decoded) {
+                const metadata = decoded.user_metadata || {};
+                const appMetadata = decoded.app_metadata || {};
+                const userRole = metadata.role || appMetadata.role || '';
+                const user: User = {
+                    sub: decoded.sub || '',
+                    email: decoded.email || '',
+                    given_name: metadata.given_name,
+                    family_name: metadata.family_name,
+                    'custom:user_type': metadata.user_type || appMetadata.user_type || userRole,
+                    phone_number: metadata.phone_number || decoded.phone,
+                };
+                await AsyncStorage.setItem('userData', JSON.stringify(user));
+                useAuthStore.setState({ user });
+            } else {
+                await AsyncStorage.removeItem('userData');
+                useAuthStore.setState({ user: null });
+            }
+        }
+
+        useAuthStore.setState({ isAuthenticated: true });
+        return { success: true };
+    }
+
+    return { success: false, error: data?.message || data?.error || 'Credenciales inválidas' };
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -55,62 +118,83 @@ export const useAuthStore = create<AuthState>((set) => ({
             const data = await response.json();
             console.log('Respuesta login:', data);
 
-            if (response.ok && data.authenticationResult) {
-                const { AccessToken } = data.authenticationResult;
-
-                await AsyncStorage.setItem('userToken', AccessToken);
-                await AsyncStorage.setItem('accessToken', AccessToken);
-
-                // Prefer the user object from the backend response (it includes the role)
-                    if (data.user) {
-                    const user: User = {
-                        sub: data.user.id || '',
-                        email: data.user.email || '',
-                        given_name: data.user.nombre || '',
-                        family_name: data.user.apellido || '',
-                        'custom:user_type': data.user.role || '',
-                        phone_number: data.user.telefono || '',
-                        companyName: data.user.companyName || '',
-                    };
-                    await AsyncStorage.setItem('userData', JSON.stringify(user));
-                    set({ user });
-                } else {
-                    // Fallback: decode the JWT (works for users with role in user_metadata)
-                    let decoded: Record<string, any> | null = null;
-                    try {
-                        decoded = jwtDecode<Record<string, any>>(AccessToken);
-                        await AsyncStorage.setItem('decodedToken', JSON.stringify(decoded));
-                    } catch (err) {
-                        console.error('Error al decodificar el token:', err);
-                    }
-
-                    if (decoded) {
-                        const metadata = decoded.user_metadata || {};
-                        const appMetadata = decoded.app_metadata || {};
-                        const userRole = metadata.role || appMetadata.role || '';
-                        const user: User = {
-                            sub: decoded.sub || '',
-                            email: decoded.email || '',
-                            given_name: metadata.given_name,
-                            family_name: metadata.family_name,
-                            'custom:user_type': metadata.user_type || appMetadata.user_type || userRole,
-                            phone_number: metadata.phone_number || decoded.phone,
-                        };
-                        await AsyncStorage.setItem('userData', JSON.stringify(user));
-                        set({ user });
-                    } else {
-                        await AsyncStorage.removeItem('userData');
-                        set({ user: null });
-                    }
-                }
-
-                set({ isAuthenticated: true });
-                return { success: true };
+            if (!response.ok) {
+                return { success: false, error: data.message || data.error || 'Credenciales inválidas' };
             }
 
-            return { success: false, error: data.message || data.error || 'Credenciales inválidas' };
+            return await applyAuthResult(data);
         } catch (e) {
             console.error('Error en login:', e);
+            return { success: false, error: 'No se pudo conectar con el servidor.' };
+        }
+    },
+
+    googleSignIn: async () => {
+        try {
+            GoogleSignin.configure({
+                webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+            });
+            await GoogleSignin.hasPlayServices();
+            const response = await GoogleSignin.signIn();
+
+            if (response.type === 'cancelled') {
+                return { success: false, error: 'Inicio de sesión con Google cancelado.' };
+            }
+
+            const idToken = response.data?.idToken;
+
+            if (!idToken) {
+                return { success: false, error: 'No se pudo obtener el token de Google.' };
+            }
+
+            const fetchResponse = await fetch(GOOGLE_SIGNIN_API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idToken }),
+            });
+
+            const data = await fetchResponse.json();
+            console.log('Respuesta Google Sign-In:', data);
+
+            if (!fetchResponse.ok) {
+                return { success: false, error: data.message || data.error || 'Error al iniciar sesión con Google.' };
+            }
+
+            return await applyAuthResult(data);
+        } catch (e: any) {
+            if (e?.code === 'PLAY_SERVICES_NOT_AVAILABLE') {
+                return { success: false, error: 'Google Play Services no está disponible en este dispositivo.' };
+            }
+            console.error('Error en Google Sign-In:', e);
+            return { success: false, error: 'No se pudo conectar con Google.' };
+        }
+    },
+
+    setRole: async (role: 'CANDIDATE' | 'COMPANY_ADMIN') => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            const response = await fetch(`${API_BASE}/users/set-role`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ role }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                return { success: false, error: data.message || data.error || 'No se pudo actualizar el rol.' };
+            }
+
+            const current = useAuthStore.getState().user || {};
+            const updated = { ...current, 'custom:user_type': data.user?.role || role } as User;
+            await AsyncStorage.setItem('userData', JSON.stringify(updated));
+            useAuthStore.setState({ user: updated });
+            return { success: true };
+        } catch (e) {
+            console.error('Error al actualizar rol:', e);
             return { success: false, error: 'No se pudo conectar con el servidor.' };
         }
     },
