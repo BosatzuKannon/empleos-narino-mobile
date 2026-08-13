@@ -51,7 +51,7 @@ interface OfferData {
   company: string; 
   description: string;
   location: string;
-  workplaceType: string;
+  modality: string;
   availablePositions: string;
   salary: string;
   contractType: string;
@@ -62,7 +62,7 @@ interface OfferErrors {
   company?: string;
   description?: string;
   location?: string;
-  workplaceType?: string;
+  modality?: string;
   availablePositions?: string;
   salary?: string;
   contractType?: string;
@@ -79,7 +79,7 @@ const CreateOfferScreen = () => {
     company: '', 
     description: '',
     location: '',
-    workplaceType: 'Presencial',
+    modality: 'Presencial',
     availablePositions: '1', 
     salary: '',
     contractType: 'Indefinido',
@@ -254,6 +254,7 @@ const CreateOfferScreen = () => {
         ubicacion: offerData.location,
         salario: parseInt(offerData.salary.replace(/\D/g, '')) || 0,
         tipo_contrato: offerData.contractType,
+        modality: offerData.modality,
         descripcion: offerData.description,
         requisitos: imageUrl,
         cupos: parseInt(offerData.availablePositions) || 1,
@@ -434,8 +435,8 @@ const CreateOfferScreen = () => {
             <Text style={styles.label}>Tipo de trabajo</Text>
             <View style={styles.pickerContainer}>
               <Picker
-                selectedValue={offerData.workplaceType}
-                onValueChange={(itemValue) => handleChange('workplaceType', itemValue)}
+                selectedValue={offerData.modality}
+                onValueChange={(itemValue) => handleChange('modality', itemValue)}
                 style={styles.picker}
                 enabled={!loading}
               >

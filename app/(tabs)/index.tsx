@@ -34,6 +34,8 @@ const APPLY_API_URL = `${process.env.EXPO_PUBLIC_API_URL}/offers/applyToJob`;
 const USER_APPLICATIONS_API = `${process.env.EXPO_PUBLIC_API_URL}/offers/getUserApplications`;
 const PROFILE_API = `${process.env.EXPO_PUBLIC_API_URL}/profile`;
 
+const SCRAPER_COMPANY_ID = 'ce6e8db1-78d3-4e18-bffa-cfb963fe20b2';
+
 const getImageUri = (imagenKey: string) => {
   if (!imagenKey) return null;
   if (imagenKey.startsWith('http')) return imagenKey;
@@ -49,10 +51,12 @@ const formatCurrency = (value: any) => {
 
 const mapOffer = (offer: any) => ({
   id: offer.id,
+  companyId: offer.companyId || '',
   title: offer.title || '',
   company: offer.company?.name || '',
   description: offer.description || '',
   location: offer.location || '',
+  modality: offer.modality || 'Presencial',
   workplaceType: offer.contractType || '',
   salary: formatCurrency(offer.salary),
   contractType: offer.contractType || '',
@@ -82,6 +86,14 @@ const OfferCard = ({ offer, onPress }: { offer: any, onPress: (offer: any) => vo
       <View style={styles.metaChip}>
         <Ionicons name="briefcase-outline" size={12} color="#666666" />
         <Text style={styles.metaChipText}>{offer.workplaceType}</Text>
+      </View>
+      <View style={styles.metaChip}>
+        <Ionicons
+          name={offer.modality === 'Remoto' ? 'wifi-outline' : offer.modality === 'Híbrido' ? 'git-merge-outline' : 'business-outline'}
+          size={12}
+          color="#666666"
+        />
+        <Text style={styles.metaChipText}>{offer.modality}</Text>
       </View>
       <View style={[styles.metaChip, styles.metaChipPrice]}>
         <Ionicons name="cash-outline" size={12} color="#558B2F" />
@@ -451,6 +463,12 @@ const HomeScreen = () => {
                     </Text>
                   </View>
                   <View style={styles.modalDetailItem}>
+                    <Ionicons name="business-outline" size={16} color="#666666" />
+                    <Text style={styles.modalDetailText}>
+                      {selectedOffer?.modality}
+                    </Text>
+                  </View>
+                  <View style={styles.modalDetailItem}>
                     <Ionicons name="cash-outline" size={16} color="#666666" />
                     <Text style={styles.modalDetailText}>{selectedOffer?.salary}</Text>
                   </View>
@@ -478,7 +496,19 @@ const HomeScreen = () => {
 
               </ScrollView>
 
-              {!isEnterprise && (() => {
+              {!isEnterprise &&
+                (selectedOffer?.companyId === SCRAPER_COMPANY_ID ? (
+                  <View style={styles.externalWarningBox}>
+                    <View style={styles.externalWarningHeader}>
+                      <Ionicons name="warning-outline" size={22} color="#7A5C00" />
+                      <Text style={styles.externalWarningTitle}>Vacante Externa</Text>
+                    </View>
+                    <Text style={styles.externalWarningText}>
+                      Esta es una oferta recopilada de fuentes externas. Por favor, revisa la descripción detallada para encontrar los números de teléfono o correos de contacto directo de la empresa. No es posible postularse a través de la plataforma.
+                    </Text>
+                  </View>
+                ) : (
+                (() => {
                 let btnText: string;
                 let btnAction: (() => void) | null;
                 let btnDisabled: boolean;
@@ -522,7 +552,8 @@ const HomeScreen = () => {
                     )}
                   </TouchableOpacity>
                 );
-              })()}
+                })()
+                ))}
             </View>
           </View>
         </Modal>
@@ -904,6 +935,30 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  externalWarningBox: {
+    marginTop: 20,
+    backgroundColor: '#FFF8E1',
+    borderColor: '#F0C94A',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+  },
+  externalWarningHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  externalWarningTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#5D4037',
+    marginLeft: 6,
+  },
+  externalWarningText: {
+    fontSize: 13,
+    color: '#4E342E',
+    lineHeight: 19,
+    marginTop: 8,
   },
   noResultsText: {
     textAlign: 'center',

@@ -77,6 +77,7 @@ const mapApplication = (app: any) => ({
     empresa: app.jobVacancy?.company?.name || '',
     municipio: app.jobVacancy?.location || 'Ubicación no especificada',
     tipo_trabajo: app.jobVacancy?.contractType || 'Tipo no especificado',
+    modality: app.jobVacancy?.modality || 'Presencial',
     salario: app.jobVacancy?.salary || null,
     imagen: app.jobVacancy?.requirements || null,
     descripcion: app.jobVacancy?.description || '',
@@ -124,6 +125,14 @@ const ApplicationCard = ({ application, onPress }: { application: any, onPress: 
       <View style={styles.metaChip}>
         <Ionicons name="briefcase-outline" size={12} color="#666666" />
         <Text style={styles.metaChipText}>{application.offer.tipo_trabajo || 'Tipo no especificado'}</Text>
+      </View>
+      <View style={styles.metaChip}>
+        <Ionicons
+          name={application.offer.modality === 'Remoto' ? 'wifi-outline' : application.offer.modality === 'Híbrido' ? 'git-merge-outline' : 'business-outline'}
+          size={12}
+          color="#666666"
+        />
+        <Text style={styles.metaChipText}>{application.offer.modality}</Text>
       </View>
       <View style={[styles.metaChip, styles.metaChipPrice]}>
         <Ionicons name="cash-outline" size={12} color="#558B2F" />
@@ -423,6 +432,10 @@ const ApplicationsScreen = () => {
                   <View style={styles.modalDetailItem}>
                     <Ionicons name="briefcase-outline" size={16} color="#666666" />
                     <Text style={styles.modalDetailText}>{selectedApplication?.offer.tipo_trabajo || 'Tipo no especificado'}</Text>
+                  </View>
+                  <View style={styles.modalDetailItem}>
+                    <Ionicons name="business-outline" size={16} color="#666666" />
+                    <Text style={styles.modalDetailText}>{selectedApplication?.offer.modality}</Text>
                   </View>
                   <View style={styles.modalDetailItem}>
                     <Ionicons name="cash-outline" size={16} color="#666666" />

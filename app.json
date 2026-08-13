@@ -2,7 +2,7 @@
   "expo": {
     "name": "Empleos Nariño",
     "slug": "empleos-narino",
-    "version": "2.4.2",
+    "version": "3.1.1",
     "orientation": "default",
     "icon": "./assets/images/logo2.png",
     "scheme": "empleosnarino",
@@ -13,7 +13,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon1.png",
+        "foregroundImage": "./assets/images/logo2.png",
         "backgroundColor": "#ffffff"
       },
       "androidNavigationBar": {
@@ -22,7 +22,7 @@
         "barStyle": "dark-content"
       },
       "package": "com.bosatzu.empleosnarino",
-      "versionCode": 34,
+      "versionCode": 40,
       "googleServicesFile": "./google-services.json",
       "splash": {
         "backgroundColor": "#ffffff",
@@ -40,7 +40,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash.png",
+          "image": "./assets/images/adaptive-icon1.png",
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }

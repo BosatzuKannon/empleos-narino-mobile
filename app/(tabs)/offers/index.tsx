@@ -76,6 +76,7 @@ const mapOffer = (offer) => ({
   company: offer.company?.name || '',
   description: offer.description || '',
   location: offer.location || '',
+  modality: offer.modality || 'Presencial',
   workplaceType: offer.contractType || '',
   salary: formatCurrency(offer.salary),
   contractType: offer.contractType || '',
@@ -151,6 +152,14 @@ const OfferCard = ({ offer, onPress }) => (
       <View style={styles.metaChip}>
         <Ionicons name="briefcase-outline" size={12} color="#666666" />
         <Text style={styles.metaChipText}>{offer.workplaceType}</Text>
+      </View>
+      <View style={styles.metaChip}>
+        <Ionicons
+          name={offer.modality === 'Remoto' ? 'wifi-outline' : offer.modality === 'Híbrido' ? 'git-merge-outline' : 'business-outline'}
+          size={12}
+          color="#666666"
+        />
+        <Text style={styles.metaChipText}>{offer.modality}</Text>
       </View>
       <View style={[styles.metaChip, styles.metaChipPrice]}>
         <Ionicons name="cash-outline" size={12} color="#558B2F" />
@@ -464,6 +473,12 @@ const OffersScreen = () => {
                     <Ionicons name="briefcase-outline" size={16} color="#666666" />
                     <Text style={styles.modalDetailText}>
                       {selectedOffer?.workplaceType}
+                    </Text>
+                  </View>
+                  <View style={styles.modalDetailItem}>
+                    <Ionicons name="business-outline" size={16} color="#666666" />
+                    <Text style={styles.modalDetailText}>
+                      {selectedOffer?.modality}
                     </Text>
                   </View>
                   <View style={styles.modalDetailItem}>
