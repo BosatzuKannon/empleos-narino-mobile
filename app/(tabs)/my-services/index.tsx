@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 15,
-    paddingBottom: 100,
+    paddingBottom: 150,
   },
   serviceCard: {
     backgroundColor: '#ffffff',
