@@ -182,7 +182,7 @@ const ProfileScreen = () => {
             ))}
             {/* Elemento de versión de App sin interacción */}
              <View style={styles.versionContainer}>
-                <Text style={styles.versionText}>Versión 3.1.1 (Build 202608)</Text>
+                <Text style={styles.versionText}>Versión 3.2.1</Text>
              </View>
           </View>
 

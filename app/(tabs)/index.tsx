@@ -6,6 +6,7 @@ import ServiceCard from '@/components/ServiceCard';
 import ServiceDetailsModal from '@/components/ServiceDetailsModal';
 import CreateServiceFab from '@/components/CreateServiceFab';
 import { fetchActiveServices, type Service } from '@/lib/services';
+import { shareItem } from '@/lib/share';
 import { useAuthStore } from '@/store/authStore';
 import {
   getUserRole,
@@ -14,7 +15,7 @@ import {
 } from '@/lib/roleUtils';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -76,6 +77,13 @@ const OfferCard = ({ offer, onPress }: { offer: any, onPress: (offer: any) => vo
         <Text style={styles.companyName} numberOfLines={1}>{offer.company}</Text>
         <Text style={styles.cardDescription} numberOfLines={2}>{offer.description}</Text>
       </View>
+      <TouchableOpacity
+        onPress={() => shareItem('offer', offer.id, offer.title)}
+        hitSlop={8}
+        style={styles.shareButton}
+      >
+        <Ionicons name="share-social-outline" size={18} color="#666666" />
+      </TouchableOpacity>
       <Ionicons name="chevron-forward" size={18} color="#CCCCCC" />
     </View>
     <View style={styles.metaRow}>
@@ -137,6 +145,10 @@ const FeedSegmentedControl = ({
 const HomeScreen = () => {
   const { user, isAuthenticated } = useAuthStore();
   const router = useRouter();
+  const { offer: deepOffer, service: deepService } = useLocalSearchParams<{
+    offer?: string;
+    service?: string;
+  }>();
   const [activeTab, setActiveTab] = useState<FeedTab>('offers');
   const [offers, setOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -223,7 +235,7 @@ const HomeScreen = () => {
     }, [])
   );
 
-  const handleSelectOffer = async (offer: any) => {
+  const handleSelectOffer = useCallback(async (offer: any) => {
     setSelectedOffer(offer);
     setIsModalVisible(true);
     setAlreadyApplied(false);
@@ -250,12 +262,26 @@ const HomeScreen = () => {
       setAlreadyApplied(false);
       setHasResume(false);
     }
-  };
+  }, [isAuthenticated, user?.sub]);
 
-  const handleSelectService = (service: Service) => {
+  const handleSelectService = useCallback((service: Service) => {
     setSelectedService(service);
     setIsServiceModalVisible(true);
-  };
+  }, []);
+
+  // Deep links /share/offer/:id y /share/service/:id: abren el modal del ítem compartido.
+  // ponytail: si el ítem ya no está activo, cae al feed sin modal (no hay endpoint público por id para ofertas).
+  useEffect(() => {
+    if (!deepOffer || offers.length === 0) return;
+    const found = offers.find((o: any) => o.id === deepOffer);
+    if (found) handleSelectOffer(found);
+  }, [deepOffer, offers, handleSelectOffer]);
+
+  useEffect(() => {
+    if (!deepService || services.length === 0) return;
+    const found = services.find((s) => s.id === deepService);
+    if (found) handleSelectService(found);
+  }, [deepService, services, handleSelectService]);
 
   const handleApply = async () => {
     if (!selectedOffer || !user?.sub) return;
@@ -422,9 +448,20 @@ const HomeScreen = () => {
               <ScrollView>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>{selectedOffer?.title}</Text>
-                  <TouchableOpacity onPress={() => setIsModalVisible(false)}>
-                    <Ionicons name="close-circle-outline" size={30} color="#666666" />
-                  </TouchableOpacity>
+                  <View style={styles.headerActions}>
+                    <TouchableOpacity
+                      onPress={() =>
+                        selectedOffer &&
+                        shareItem('offer', selectedOffer.id, selectedOffer.title)
+                      }
+                      style={styles.shareButton}
+                    >
+                      <Ionicons name="share-social-outline" size={22} color="#558B2F" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setIsModalVisible(false)}>
+                      <Ionicons name="close-circle-outline" size={30} color="#666666" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 <View style={styles.modalImageContainer}>
@@ -775,6 +812,10 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
+  shareButton: {
+    padding: 4,
+    marginRight: 4,
+  },
   jobTitle: {
     fontSize: 15,
     fontWeight: 'bold',
@@ -836,6 +877,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 15,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   modalImageContainer: {
     position: 'relative',

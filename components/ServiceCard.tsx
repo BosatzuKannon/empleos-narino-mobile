@@ -12,6 +12,7 @@ import {
   PRICE_TYPE_ICONS,
   type Service,
 } from '@/lib/services';
+import { shareItem } from '@/lib/share';
 
 interface ServiceCardProps {
   service: Service;
@@ -45,6 +46,13 @@ const ServiceCard = ({ service, onPress }: ServiceCardProps) => {
           <Text style={styles.companyName} numberOfLines={1}>{providerName}</Text>
           <Text style={styles.cardDescription} numberOfLines={2}>{service.description}</Text>
         </View>
+        <TouchableOpacity
+          onPress={() => shareItem('service', service.id, service.title)}
+          hitSlop={8}
+          style={styles.shareButton}
+        >
+          <Ionicons name="share-social-outline" size={18} color="#666666" />
+        </TouchableOpacity>
         <Ionicons name="chevron-forward" size={18} color="#CCCCCC" />
       </View>
       <View style={styles.metaRow}>
@@ -102,6 +110,10 @@ const styles = StyleSheet.create({
   cardBody: {
     flex: 1,
     marginRight: 8,
+  },
+  shareButton: {
+    padding: 4,
+    marginRight: 4,
   },
   jobTitle: {
     fontSize: 15,

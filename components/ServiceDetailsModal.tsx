@@ -27,6 +27,7 @@ import {
   PRICE_TYPE_LABELS,
   type Service,
 } from '@/lib/services';
+import { shareItem } from '@/lib/share';
 
 interface ServiceDetailsModalProps {
   visible: boolean;
@@ -84,9 +85,17 @@ const ServiceDetailsModal = ({ visible, service, onClose }: ServiceDetailsModalP
           <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{service?.title || ''}</Text>
-              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                <Ionicons name="close-circle-outline" size={30} color="#666666" />
-              </TouchableOpacity>
+              <View style={styles.headerActions}>
+                <TouchableOpacity
+                  onPress={() => service && shareItem('service', service.id, service.title)}
+                  style={styles.shareButton}
+                >
+                  <Ionicons name="share-social-outline" size={24} color="#558B2F" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                  <Ionicons name="close-circle-outline" size={30} color="#666666" />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.modalImageContainer}>
@@ -196,6 +205,13 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     marginLeft: 10,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  shareButton: {
+    padding: 4,
   },
   modalTitle: {
     fontSize: 24,
