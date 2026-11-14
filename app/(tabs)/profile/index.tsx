@@ -1,3 +1,4 @@
+import AdminAdsPanel from '@/components/AdminAdsPanel';
 import GradientBackground from '@/components/GradientBackground';
 import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
@@ -139,6 +140,9 @@ const ProfileScreen = () => {
               <Ionicons name="arrow-forward-outline" size={28} color={GREY_TEXT} />
             </View>
           </Card>
+
+          {/* --- Panel de anuncios: solo para el administrador --- */}
+          {userEmail === 'zeus6281@gmail.com' && <AdminAdsPanel />}
 
           {/* --- Sección de MI CUENTA --- */}
           <Text style={styles.sectionTitle}>Mi Cuenta</Text>

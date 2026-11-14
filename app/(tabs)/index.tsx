@@ -1,7 +1,9 @@
 import hiringPlaceholder from '@/assets/images/hiring.png';
 import logo from '@/assets/images/logo.png';
 import { apiFetch } from '@/lib/apiClient';
+import { fetchActiveAds, type Advertisement } from '@/lib/ads';
 import GradientBackground from '@/components/GradientBackground';
+import { interleaveAds } from '@/components/AdCard';
 import ServiceCard from '@/components/ServiceCard';
 import ServiceDetailsModal from '@/components/ServiceDetailsModal';
 import CreateServiceFab from '@/components/CreateServiceFab';
@@ -154,6 +156,7 @@ const HomeScreen = () => {
   const [loading, setLoading] = useState(true);
   const [services, setServices] = useState<Service[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
+  const [ads, setAds] = useState<Advertisement[]>([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isServiceModalVisible, setIsServiceModalVisible] = useState(false);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -228,10 +231,20 @@ const HomeScreen = () => {
     }
   };
 
+  const loadActiveAds = async () => {
+    try {
+      setAds(await fetchActiveAds());
+    } catch (err) {
+      console.error('❌ Error al obtener anuncios:', err);
+      setAds([]);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
       fetchActiveOffers();
       loadActiveServices();
+      loadActiveAds();
     }, [])
   );
 
@@ -404,13 +417,16 @@ const HomeScreen = () => {
               loading ? (
                 <ActivityIndicator size="large" color="#166907" style={{ marginTop: 50 }} />
               ) : filteredOffers.length > 0 ? (
-                filteredOffers.map((offer) => (
-                  <OfferCard
-                    key={offer.id}
-                    offer={offer}
-                    onPress={handleSelectOffer}
-                  />
-                ))
+                interleaveAds(
+                  filteredOffers.map((offer) => (
+                    <OfferCard
+                      key={offer.id}
+                      offer={offer}
+                      onPress={handleSelectOffer}
+                    />
+                  )),
+                  ads
+                )
               ) : (
                 <Text style={styles.noResultsText}>
                   {offers.length === 0 ? 'No hay ofertas activas disponibles.' : 'No se encontraron ofertas.'}
@@ -419,13 +435,16 @@ const HomeScreen = () => {
             ) : servicesLoading ? (
               <ActivityIndicator size="large" color="#166907" style={{ marginTop: 50 }} />
             ) : filteredServices.length > 0 ? (
-              filteredServices.map((service) => (
-                <ServiceCard
-                  key={service.id}
-                  service={service}
-                  onPress={handleSelectService}
-                />
-              ))
+              interleaveAds(
+                filteredServices.map((service) => (
+                  <ServiceCard
+                    key={service.id}
+                    service={service}
+                    onPress={handleSelectService}
+                  />
+                )),
+                ads
+              )
             ) : (
               <Text style={styles.noResultsText}>
                 {services.length === 0
