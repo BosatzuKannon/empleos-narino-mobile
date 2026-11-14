@@ -73,13 +73,6 @@ const MyServiceCard = ({
       <Ionicons name="chevron-forward" size={18} color="#CCCCCC" />
     </View>
 
-    {service.paymentStatus === 'PENDING' && (
-      <View style={styles.pendingPaymentBanner}>
-        <Ionicons name="time-outline" size={16} color="#8A5A00" />
-        <Text style={styles.pendingPaymentText}>Pago Pendiente</Text>
-      </View>
-    )}
-
     <View style={styles.metaRow}>
       <View style={styles.metaChip}>
         <Ionicons name="location-outline" size={12} color="#666666" />
@@ -380,24 +373,6 @@ const styles = StyleSheet.create({
   statusPaused: {
     backgroundColor: '#FFF3E0',
     color: '#EF6C00',
-  },
-  pendingPaymentBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    backgroundColor: '#FFF8E1',
-    borderWidth: 1,
-    borderColor: '#F0C23B',
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginTop: 10,
-  },
-  pendingPaymentText: {
-    marginLeft: 8,
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#8A5A00',
   },
   categoryName: {
     fontSize: 12,

@@ -32,7 +32,6 @@ const ADMIN_EMAIL = 'carlos87jaramillo@gmail.com';
 const MODAL_OFFER_STATUSES = [
     'activo', 
     'inactivo',
-    'verificando_pago'
 ];
 
 // Definición de los estados disponibles para los chips de filtro
@@ -41,18 +40,7 @@ const OFFER_STATUSES = [
     'activo', 
     'inactivo',
     'cerrada',
-    'verificando pago'
 ];
-
-/**
- * Helper CORREGIDO para construir la URI de la imagen.
- */
-const getImageUri = (imagenKey) => {
-  if (!imagenKey) return null;
-  if (imagenKey.startsWith('http')) return imagenKey;
-  // Asume que las imágenes de ofertas y comprobantes usan la misma base S3
-  return `https://empleos-narino-files.s3.us-east-2.amazonaws.com/${imagenKey}`;
-};
 
 const formatCurrency = (value) => {
   if (value == null) return '';
@@ -66,7 +54,6 @@ const formatCurrency = (value) => {
 const STATUS_LABELS = {
   'ACTIVE': 'activo',
   'INACTIVE': 'inactivo',
-  'PENDING_PAYMENT': 'verificando_pago',
   'CLOSED': 'cerrada',
 };
 
@@ -80,9 +67,8 @@ const mapOffer = (offer) => ({
   workplaceType: offer.contractType || '',
   salary: formatCurrency(offer.salary),
   contractType: offer.contractType || '',
-  offerStatus: STATUS_LABELS[offer.status] || 'verificando_pago',
+  offerStatus: STATUS_LABELS[offer.status] || 'inactivo',
   applicantCount: offer._count?.applications ?? (Array.isArray(offer.applicants) ? offer.applicants.length : 0),
-  paymentProofImageKey: offer.paymentProofImageKey || null,
   createdAt: offer.createdAt || new Date().toISOString(),
   imageUrl: offer.requirements || null,
   availablePositions: offer.availablePositions ?? 1,
@@ -92,7 +78,7 @@ const mapOffer = (offer) => ({
 const getStatusStyle = (status) => {
     // Si status es null, undefined, o no es string, retorna un estilo seguro
     if (!status || typeof status !== 'string') {
-      return styles.statusWaiting; 
+      return styles.statusExpired; 
     }
     
     // Normalización de estados para el mapeo de estilos
@@ -100,8 +86,6 @@ const getStatusStyle = (status) => {
     
     if (normalizedStatus === 'inactiva' || normalizedStatus === 'vencida' || normalizedStatus === 'inactivo') {
         normalizedStatus = 'vencida';
-    } else if (normalizedStatus === 'verificando pago' || normalizedStatus === 'verificando_pago') {
-        normalizedStatus = 'verificando_pago';
     } else if (normalizedStatus === 'activa' || normalizedStatus === 'activo') {
         normalizedStatus = 'activa';
     } else if (normalizedStatus === 'cerrada') {
@@ -118,11 +102,8 @@ const getStatusStyle = (status) => {
         return styles.statusExpired;
       case 'cerrada':
         return styles.statusClosed;
-      case 'verificando_pago':
-      case 'en espera de pago':
-      case 'verificando pago': 
       default:
-        return styles.statusWaiting;
+        return styles.statusExpired;
     }
 };
 
@@ -174,8 +155,7 @@ const StatusChip = ({ status, isSelected, onPress }) => {
   let statusKey;
   if (status === 'activa' || status === 'activo') statusKey = 'activa';
   else if (status === 'inactiva' || status === 'inactivo') statusKey = 'vencida'; 
-  else if (status === 'verificando pago' || status === 'verificando_pago') statusKey = 'verificando_pago'; 
-  else statusKey = 'verificando_pago'; // Default para 'Todos'
+  else statusKey = 'cerrada'; // 'Todos' y 'cerrada' usan el color neutro
 
   const statusStyle = getStatusStyle(statusKey);
   
@@ -329,12 +309,6 @@ const OffersScreen = () => {
             const status = offer.offerStatus?.toLowerCase(); 
             if (!status) return false;
             return status === 'vencida' || status === 'inactiva' || status === 'inactivo';
-        });
-      } else if (statusToFilter === 'verificando pago') {
-        statusFiltered = offers.filter(offer => {
-            const status = offer.offerStatus?.toLowerCase(); 
-            if (!status) return false;
-            return status === 'verificando_pago' || status === 'en espera de pago' || status === 'verificando pago';
         });
       } else {
         statusFiltered = offers.filter(offer => {
@@ -511,18 +485,6 @@ const OffersScreen = () => {
                             </View>
                         )}
 
-                        {/* IMAGEN DE COMPROBANTE DE PAGO (SOLO ADMIN) */}
-                        {selectedOffer?.paymentProofImageKey && (
-                            <>
-                                <Text style={styles.modalSectionTitle}>Comprobante de Pago</Text>
-                                <Image
-                                    source={{ uri: getImageUri(selectedOffer.paymentProofImageKey) }}
-                                    style={styles.paymentProofImage}
-                                    resizeMode="contain"
-                                />
-                            </>
-                        )}
-                        {/* FIN IMAGEN COMPROBANTE DE PAGO */}
                     </>
                 ) : (
                     // Si no es Admin, solo muestra el estado actual como texto
@@ -692,14 +654,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 15,
   },
-  // --- NUEVO ESTILO PARA IMAGEN DE COMPROBANTE ---
-  paymentProofImage: {
-    width: '100%',
-    height: 200, // Altura fija para visualización del comprobante
-    borderRadius: 10,
-    marginVertical: 10,
-  },
-  // ---------------------------------------------
   offerCard: {
     backgroundColor: '#ffffff',
     borderRadius: 12,
@@ -797,10 +751,6 @@ const styles = StyleSheet.create({
   statusClosed: {
     backgroundColor: '#eceff1',
     color: '#546e7a',
-  },
-  statusWaiting: { 
-    backgroundColor: '#e6f2ff',
-    color: '#0f79b5',
   },
   noResultsText: {
     textAlign: 'center',

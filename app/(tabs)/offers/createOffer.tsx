@@ -2,14 +2,13 @@ import { apiFetch } from '@/lib/apiClient';
 import hiringPlaceholder from '@/assets/images/hiring.png';
 import logo from '@/assets/images/logo.png';
 import GradientBackground from '@/components/GradientBackground';
+import PublishSuccess from '@/components/PublishSuccess';
 import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
-import * as Linking from 'expo-linking';
-import * as WebBrowser from 'expo-web-browser';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
@@ -21,30 +20,6 @@ const nariñoMunicipalities = [
 // URLs de los servicios
 const PRESIGNED_URL_API = `${process.env.EXPO_PUBLIC_API_URL}/offers/generatePresignedUrl`;
 const CREATE_OFFER_API = `${process.env.EXPO_PUBLIC_API_URL}/offers/createOffer`;
-const GENERATE_CHECKOUT_API = `${process.env.EXPO_PUBLIC_API_URL}/wompi/generate-checkout`;
-const APP_REDIRECT_PROXY = 'https://empleos-narino-backend.onrender.com/wompi/app-redirect?link=';
-
-type OfferPlanType = 'STANDARD' | 'FEATURED';
-
-const PLAN_OPTIONS: {
-  type: OfferPlanType;
-  name: string;
-  price: string;
-  description: string;
-}[] = [
-  {
-    type: 'STANDARD',
-    name: 'Plan Estándar',
-    price: '$7.000',
-    description: 'Publicación por 1 mes',
-  },
-  {
-    type: 'FEATURED',
-    name: 'Plan Destacado',
-    price: '$10.000',
-    description: 'Publicación por 1 mes con mayor visibilidad',
-  },
-];
 
 interface OfferData {
   title: string;
@@ -66,13 +41,13 @@ interface OfferErrors {
   availablePositions?: string;
   salary?: string;
   contractType?: string;
-  receiptImage?: string;
 }
 
 const CreateOfferScreen = () => {
   const router = useRouter();
   const { user } = useAuthStore();
   const [loading, setLoading] = useState(false);
+  const [published, setPublished] = useState(false);
   const [formErrors, setFormErrors] = useState<OfferErrors>({});
   const [offerData, setOfferData] = useState<OfferData>({
     title: '',
@@ -85,9 +60,7 @@ const CreateOfferScreen = () => {
     contractType: 'Indefinido',
   });
   const [offerImage, setOfferImage] = useState<any>(null); 
-  const [receiptImage, setReceiptImage] = useState<any>(null); 
   const [salaryDisplay, setSalaryDisplay] = useState('');
-  const [planType, setPlanType] = useState<OfferPlanType>('STANDARD');
 
   // --- Funciones de Toast ---
   const showToast = (message: string, type: 'error' | 'success' = 'error') => {
@@ -182,7 +155,7 @@ const CreateOfferScreen = () => {
     }
   };
 
-  const handleImageUpload = async (imageType: 'oferta' | 'comprobante') => {
+  const handleImageUpload = async () => {
     try {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
@@ -200,18 +173,11 @@ const CreateOfferScreen = () => {
         if (result.canceled) return;
 
         const asset = result.assets[0];
-        const imageData = {
-            uri: asset.uri,
-            fileName: `${imageType}-${Date.now()}.jpg`,
-            type: 'image/jpeg'
-        };
-
-        if (imageType === 'oferta') {
-          setOfferImage(imageData);
-        } else {
-          setReceiptImage(imageData);
-          setFormErrors(prev => ({ ...prev, receiptImage: undefined }));
-        }
+        setOfferImage({
+          uri: asset.uri,
+          fileName: `oferta-${Date.now()}.jpg`,
+          type: 'image/jpeg',
+        });
     } catch (e) {
         console.error('Error seleccionando imagen:', e);
         showToast('No se pudo seleccionar la imagen.');
@@ -271,48 +237,7 @@ const CreateOfferScreen = () => {
         throw new Error('No se recibió la oferta creada.');
       }
 
-      // 1. La oferta queda en estado PENDING_PAYMENT. 2. Generamos el checkout
-      // de Wompi y lo abrimos. Wompi valida que redirect-url sea http(s),
-      // así que apuntamos a un proxy del backend que responde con un 302 al
-      // deep link real de la app.
-      const proxyUrl =
-        APP_REDIRECT_PROXY +
-        encodeURIComponent(Linking.createURL('/(tabs)/offers'));
-      const checkout = await apiFetch(GENERATE_CHECKOUT_API, {
-        method: 'POST',
-        authenticated: true,
-        body: JSON.stringify({
-          entityType: 'OFFER',
-          entityId: offer.id,
-          planType,
-          redirectUrl: proxyUrl,
-        }),
-      });
-
-      const result = await WebBrowser.openAuthSessionAsync(
-        checkout.checkoutUrl,
-        Linking.createURL('/(tabs)/offers'),
-      );
-
-      // El webhook confirma el pago; mientras tanto la oferta queda en
-      // "verificando pago" en Mis Vacantes con su badge.
-      if (result.type === 'success') {
-        Toast.show({
-          type: 'success',
-          text1: '¡Oferta creada!',
-          text2: 'Tu oferta fue creada correctamente. El pago se confirmará en unos minutos.',
-          position: 'bottom',
-        });
-      } else {
-        Toast.show({
-          type: 'info',
-          text1: 'Pago pendiente',
-          text2: 'Completa el pago desde Mis Vacantes para publicar tu oferta.',
-          position: 'bottom',
-        });
-      }
-      router.replace('/(tabs)/offers');
-
+      setPublished(true);
     } catch (error) {
       console.error('Error creando oferta:', error);
       showToast('No se pudo crear la oferta. Intenta nuevamente.');
@@ -325,6 +250,9 @@ const CreateOfferScreen = () => {
     return formErrors[field] ? <Text style={styles.fieldError}>{formErrors[field]}</Text> : null;
   };
 
+  if (published) {
+    return <PublishSuccess type="offer" />;
+  }
 
   return (
     <GradientBackground>
@@ -344,41 +272,10 @@ const CreateOfferScreen = () => {
           </Text>
 
           <View style={styles.formContainer}>
-            <Text style={styles.label}>Plan de publicación *</Text>
-            <View style={styles.planOptions}>
-              {PLAN_OPTIONS.map((plan) => {
-                const selected = planType === plan.type;
-                return (
-                  <TouchableOpacity
-                    key={plan.type}
-                    style={[styles.planCard, selected && styles.planCardSelected]}
-                    onPress={() => setPlanType(plan.type)}
-                    disabled={loading}
-                    activeOpacity={0.85}
-                  >
-                    <View style={styles.planRow}>
-                      <Ionicons
-                        name={selected ? 'radio-button-on' : 'radio-button-off'}
-                        size={22}
-                        color={selected ? '#558B2F' : '#999999'}
-                      />
-                      <View style={styles.planInfo}>
-                        <Text style={[styles.planName, selected && styles.planNameSelected]}>
-                          {plan.name}
-                        </Text>
-                        <Text style={styles.planPrice}>{plan.price}</Text>
-                        <Text style={styles.planDescription}>{plan.description}</Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
             {/* Carga de Imagen de la Oferta */}
             <Text style={styles.label}>Imagen de la oferta (Opcional)</Text>
             <TouchableOpacity 
-              onPress={() => handleImageUpload('oferta')} 
+              onPress={handleImageUpload} 
               style={styles.imageUploadButton}
               disabled={loading}
             >
@@ -485,13 +382,6 @@ const CreateOfferScreen = () => {
             {getErrorMessage('availablePositions')}
           </View>
 
-          <View style={styles.disclaimerContainer}>
-            <Ionicons name="information-circle-outline" size={16} color="#EF6C00" />
-            <Text style={styles.disclaimerText}>
-              Nota: el pago equivale a 1 mes (30 días) de publicación activa en la plataforma. Pasado este periodo, la publicación se desactivará automáticamente.
-            </Text>
-          </View>
-
           <TouchableOpacity 
             style={[styles.saveButton, loading && styles.saveButtonDisabled]} 
             onPress={handleSave}
@@ -582,11 +472,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333333',
   },
-  // 🆕 ESTILO NUEVO: Input deshabilitado
-  disabledInput: {
-    backgroundColor: '#e0e0e0',
-    color: '#666666',
-  },
   inputError: {
     borderColor: '#d32f2f',
     borderWidth: 1.5,
@@ -612,72 +497,6 @@ const styles = StyleSheet.create({
     height: 50,
     width: '100%',
     color: '#333333',
-  },
-  paymentInfoContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#e8f5e9',
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 20,
-  },
-  planOptions: {
-    marginTop: 5,
-    gap: 10,
-  },
-  planCard: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1.5,
-    borderColor: '#E0E0E0',
-    borderRadius: 12,
-    padding: 14,
-  },
-  planCardSelected: {
-    borderColor: '#558B2F',
-    backgroundColor: '#F1F8E9',
-  },
-  planRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  planInfo: {
-    flex: 1,
-    marginLeft: 10,
-    alignItems: 'flex-start',
-  },
-  planName: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#333333',
-    textAlign: 'left',
-  },
-  planNameSelected: {
-    color: '#558B2F',
-  },
-  planPrice: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#558B2F',
-    marginTop: 2,
-    textAlign: 'left',
-  },
-  planDescription: {
-    fontSize: 12,
-    color: '#666666',
-    marginTop: 2,
-    textAlign: 'left',
-  },
-  infoIcon: {
-    marginRight: 10,
-  },
-  paymentInfoText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#333333',
-    lineHeight: 20,
-  },
-  boldText: {
-    fontWeight: 'bold',
   },
   imageUploadButton: {
     flexDirection: 'row',
@@ -719,22 +538,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 16,
-  },
-  disclaimerContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#FFF8E1',
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 16,
-    marginBottom: 4,
-  },
-  disclaimerText: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 12,
-    lineHeight: 17,
-    color: '#8A5A00',
   },
 });
 

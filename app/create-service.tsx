@@ -8,22 +8,19 @@
 
 import logo from '@/assets/images/logo.png';
 import GradientBackground from '@/components/GradientBackground';
+import PublishSuccess from '@/components/PublishSuccess';
 import { useAppAlerts } from '@/hooks/useAppAlerts';
 import { apiFetch, friendlyErrorMessage } from '@/lib/apiClient';
 import municipiosNarino from '@/lib/constants/municipiosNarino';
 import {
   createService,
   fetchServiceCategories,
-  generateServiceCheckout,
   PRICE_TYPE_LABELS,
   type ServiceCategory,
-  type ServicePlanType,
   type ServicePriceType,
 } from '@/lib/services';
 import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
-import * as Linking from 'expo-linking';
-import * as WebBrowser from 'expo-web-browser';
 import { File } from 'expo-file-system';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -40,31 +37,10 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Toast from 'react-native-toast-message';
 
 const PRESIGNED_URL_API = `${process.env.EXPO_PUBLIC_API_URL}/offers/generatePresignedUrl`;
 
 const PRICE_TYPE_OPTIONS: ServicePriceType[] = ['HOURLY', 'FIXED', 'TO_BE_AGREED'];
-
-const PLAN_OPTIONS: {
-  type: ServicePlanType;
-  name: string;
-  price: string;
-  description: string;
-}[] = [
-  {
-    type: 'STANDARD',
-    name: 'Plan Estándar',
-    price: '$5.000',
-    description: 'Publicación por 1 mes',
-  },
-  {
-    type: 'FEATURED',
-    name: 'Plan Destacado',
-    price: '$8.000',
-    description: 'Publicación por 1 mes con mayor visibilidad',
-  },
-];
 
 // Sanitiza "$ 90.000" / "90,000" / " 90.000 " → "90000" (solo dígitos).
 const sanitizePrice = (value: string): string => value.replace(/\D/g, '');
@@ -100,6 +76,7 @@ const CreateServiceScreen = () => {
   const { showError, dialogElement } = useAppAlerts();
 
   const [loading, setLoading] = useState(false);
+  const [published, setPublished] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [formErrors, setFormErrors] = useState<CreateServiceErrors>({});
   const [serviceImage, setServiceImage] = useState<any>(null);
@@ -116,8 +93,6 @@ const CreateServiceScreen = () => {
     priceType: 'FIXED',
     description: '',
   });
-
-  const [planType, setPlanType] = useState<ServicePlanType>('STANDARD');
 
   useEffect(() => {
     if (!isAuthenticated || !user?.sub) {
@@ -294,8 +269,7 @@ const CreateServiceScreen = () => {
       // Sanitización estricta del precio: "$ 90.000" → 90000 (número).
       const price = parsePriceToNumber(formData.price);
 
-      // 1. Crear el servicio (queda en payment_status PENDING).
-      const service = await createService({
+      await createService({
         title: formData.title.trim(),
         description: formData.description.trim(),
         municipality: formData.municipality,
@@ -305,44 +279,7 @@ const CreateServiceScreen = () => {
         imageUrl: imageUrl || null,
       });
 
-      // 2. Generar el checkout de Wompi y abrirlo para el pago. Wompi valida
-      //    que redirect-url sea una URL http(s) y rechaza esquemas propios
-      //    (exp://), así que pasamos un proxy del backend que responde con un
-      //    302 al deep link real de la app.
-      const deepLink = encodeURIComponent(
-        Linking.createURL('/(tabs)/my-services'),
-      );
-      const proxyUrl =
-        'https://empleos-narino-backend.onrender.com/wompi/app-redirect?link=' +
-        deepLink;
-      const checkout = await generateServiceCheckout(
-        service.id,
-        planType,
-        proxyUrl,
-      );
-      const result = await WebBrowser.openAuthSessionAsync(
-        checkout.checkoutUrl,
-        Linking.createURL('/(tabs)/my-services'),
-      );
-
-      // 3. El usuario pagó (webhook confirma) o canceló; el estado PENDING
-      //    queda visible en Mis Servicios con su badge.
-      if (result.type === 'success') {
-        Toast.show({
-          type: 'success',
-          text1: '¡Servicio creado!',
-          text2: 'Tu servicio fue creado correctamente. El pago se confirmará en unos minutos.',
-          position: 'bottom',
-        });
-      } else {
-        Toast.show({
-          type: 'info',
-          text1: 'Pago pendiente',
-          text2: 'Completa el pago desde Mis Servicios para publicar tu servicio.',
-          position: 'bottom',
-        });
-      }
-      router.replace('/(tabs)/my-services');
+      setPublished(true);
     } catch (error) {
       console.error('❌ Error creando el servicio:', error);
       showError(friendlyErrorMessage(error));
@@ -356,6 +293,10 @@ const CreateServiceScreen = () => {
     formErrors[field] ? (
       <Text style={styles.fieldError}>{formErrors[field]}</Text>
     ) : null;
+
+  if (published) {
+    return <PublishSuccess type="service" />;
+  }
 
   return (
     <GradientBackground>
@@ -502,44 +443,6 @@ const CreateServiceScreen = () => {
               editable={!loading}
             />
             {getErrorMessage('description')}
-
-            <Text style={styles.label}>Plan de publicación *</Text>
-            <View style={styles.planOptions}>
-              {PLAN_OPTIONS.map((plan) => {
-                const selected = planType === plan.type;
-                return (
-                  <TouchableOpacity
-                    key={plan.type}
-                    style={[styles.planCard, selected && styles.planCardSelected]}
-                    onPress={() => setPlanType(plan.type)}
-                    disabled={loading}
-                    activeOpacity={0.85}
-                  >
-                    <View style={styles.planRow}>
-                      <Ionicons
-                        name={selected ? 'radio-button-on' : 'radio-button-off'}
-                        size={22}
-                        color={selected ? '#558B2F' : '#999999'}
-                      />
-                      <View style={styles.planInfo}>
-                        <Text style={[styles.planName, selected && styles.planNameSelected]}>
-                          {plan.name}
-                        </Text>
-                        <Text style={styles.planPrice}>{plan.price}</Text>
-                        <Text style={styles.planDescription}>{plan.description}</Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-
-          <View style={styles.disclaimerContainer}>
-            <Ionicons name="information-circle-outline" size={16} color="#EF6C00" />
-            <Text style={styles.disclaimerText}>
-              Nota: el pago equivale a 1 mes (30 días) de publicación activa en la plataforma. Pasado este periodo, la publicación se desactivará automáticamente.
-            </Text>
           </View>
 
           <TouchableOpacity
@@ -654,52 +557,6 @@ const styles = StyleSheet.create({
     minHeight: 100,
     textAlignVertical: 'top',
   },
-  planOptions: {
-    marginTop: 5,
-    gap: 10,
-  },
-  planCard: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1.5,
-    borderColor: '#E0E0E0',
-    borderRadius: 12,
-    padding: 14,
-  },
-  planCardSelected: {
-    borderColor: '#558B2F',
-    backgroundColor: '#F1F8E9',
-  },
-  planRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  planInfo: {
-    flex: 1,
-    marginLeft: 10,
-    alignItems: 'flex-start',
-  },
-  planName: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#333333',
-    textAlign: 'left',
-  },
-  planNameSelected: {
-    color: '#558B2F',
-  },
-  planPrice: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#558B2F',
-    marginTop: 2,
-    textAlign: 'left',
-  },
-  planDescription: {
-    fontSize: 12,
-    color: '#666666',
-    marginTop: 2,
-    textAlign: 'left',
-  },
   pickerContainer: {
     backgroundColor: '#f0f0f0',
     borderRadius: 10,
@@ -755,22 +612,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 16,
-  },
-  disclaimerContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#FFF8E1',
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 16,
-    marginBottom: 4,
-  },
-  disclaimerText: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 12,
-    lineHeight: 17,
-    color: '#8A5A00',
   },
 });
 
